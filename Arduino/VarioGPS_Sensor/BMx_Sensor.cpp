@@ -337,3 +337,5 @@ float BMx_Sensor::readAltitude(float seaLevelhPa) {
 
   return altitude;
 }
+
+

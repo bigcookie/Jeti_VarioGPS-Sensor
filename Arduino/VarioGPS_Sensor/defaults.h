@@ -8,12 +8,13 @@
 
 //#define UNIT_US                             //uncomment to enable US units
 
-#define V_REF                     3300        // set supply voltage from 1800 to 5500mV
+#define V_REF                     5000        // set supply voltage from 1800 to 5500mV
 
 // supported devices
 #define SUPPORT_BMx280     
-#define SUPPORT_MS5611_LPS  
+// #define SUPPORT_MS5611_LPS  
 #define SUPPORT_GPS
+#define SPEEDVARIO
 
 // **************************************
 
@@ -28,6 +29,14 @@ enum
   ID_ALTREL,
   ID_ALTABS,
   ID_VARIO,
+#ifdef SPEEDVARIO
+  ID_SV_VARIO,
+  ID_SV_SIG_LOSS_CNT,
+  ID_SV_LAST_SIG_LOSS_PERIOD,
+  ID_SV_SIGNAL_FRQ,
+  ID_SV_CTRL,
+  ID_GPSVARIO,
+#endif
   ID_DIST,
   ID_TRIP,
   ID_HEADING,
@@ -57,7 +66,11 @@ TYPE_GPS  int30_t   Special data type for GPS coordinates:  lo/hi minute - lo/hi
 
 // Sensor names and unit[EU]
 #ifndef UNIT_US
+#ifdef SERIAL_TEST
 JETISENSOR_CONST sensors[] PROGMEM =
+#else
+JETISENSOR_CONST sensors[] PROGMEM =
+#endif
 {
   // id             name          unit          data type           precision
   { ID_GPSLAT,      "Latitude",   " ",          JetiSensor::TYPE_GPS, 0 },
@@ -66,6 +79,14 @@ JETISENSOR_CONST sensors[] PROGMEM =
   { ID_ALTREL,      "Rel. Altit", "m",          JetiSensor::TYPE_22b, 1 },
   { ID_ALTABS,      "Altitude",   "m",          JetiSensor::TYPE_22b, 0 },
   { ID_VARIO,       "Vario",      "m/s",        JetiSensor::TYPE_22b, 2 },
+#ifdef SPEEDVARIO
+  { ID_SV_VARIO,    "SpeedVario",      "m/s",   JetiSensor::TYPE_22b, 2 },
+  { ID_SV_SIG_LOSS_CNT,         "SigLossCnt", " ",  JetiSensor::TYPE_14b, 0 },
+  { ID_SV_LAST_SIG_LOSS_PERIOD,  "LastSigLossP","ms", JetiSensor::TYPE_22b, 0 },
+  { ID_SV_SIGNAL_FRQ,    "Signal Freq",      "Hz",  JetiSensor::TYPE_14b, 0 },
+  { ID_SV_CTRL,     "SV Control",      "%",     JetiSensor::TYPE_14b, 0 },
+  { ID_GPSVARIO,     "GPS Vario",      "m/s",     JetiSensor::TYPE_22b, 2 },
+#endif
   { ID_DIST,        "Distance",   "m",          JetiSensor::TYPE_22b, 0 },
   { ID_TRIP,        "Trip",       "km",         JetiSensor::TYPE_22b, 2 },
   { ID_HEADING,     "Heading",    "\xB0",       JetiSensor::TYPE_14b, 0 },
@@ -98,6 +119,9 @@ JETISENSOR_CONST sensors[] PROGMEM =
   { ID_ALTREL,      "Rel. Altit", "ft",         JetiSensor::TYPE_22b, 1 },
   { ID_ALTABS,      "Altitude",   "ft",         JetiSensor::TYPE_22b, 0 },
   { ID_VARIO,       "Vario",      "ft/s",       JetiSensor::TYPE_22b, 2 }, 
+#ifdef SPEEDVARIO
+  { ID_SPEEDVARIO,  "SpeedVario",      "??",   JetiSensor::TYPE_22b, 2 },
+#endif
   { ID_DIST,        "Distance",   "ft.",        JetiSensor::TYPE_22b, 0 },
   { ID_TRIP,        "Trip",       "mi",         JetiSensor::TYPE_22b, 2 },
   { ID_HEADING,     "Heading",    "\xB0",       JetiSensor::TYPE_14b, 0 },
@@ -135,17 +159,16 @@ enum {
 // dead zone filter in centimeter (Even if you use US-units!)
 
 // BMP280/BME280
-#define BMx280_SMOOTHING 0.15 
+#define BMx280_SMOOTHING 0.85
 #define BMx280_DEADZONE 5
 
 // MS5611
-#define MS5611_SMOOTHING 0.20
+#define MS5611_SMOOTHING 0.80
 #define MS5611_DEADZONE 0
 
 // LPS (LPS311)
-#define LPS_SMOOTHING 0.20
+#define LPS_SMOOTHING 0.80
 #define LPS_DEADZONE 0
-
 
 // **** GPS settings ****
 
@@ -158,7 +181,18 @@ enum {
   GPS_extended
 };
 
-
+#ifdef SPEEDVARIO 
+#define SPEEDVARIO_NORMALSPEED 1200
+#define SPEEDVARIO_SPEEDSPREAD 1.0
+#define SPEEDVARIO_SIG_FREQ 50
+// SV mode
+enum {
+  SV_BASIC_VARIO,
+  SV_SPEED_VARIO,
+  SV_TEC_VARIO,
+  SV_RC_CONTROL
+};
+#endif
 
 // **** Voltage measurement settings ****
 
@@ -330,5 +364,7 @@ const uint8_t mVperAmp[] =  {
 #define DEFAULT_ENABLE_Rx2        false
 
 #define DEFAULT_ENABLE_EXT_TEMP   false
+
+
 
 
