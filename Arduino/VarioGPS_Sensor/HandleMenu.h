@@ -21,6 +21,11 @@ enum screenViews {
   enableRx1Voltage,
   enableRx2Voltage,
   enableExternTemp,
+  #ifdef SPEEDVARIO
+  setSpeedVarioMode,
+  setNormalSpeed,
+  setSpeedSpread,
+  #endif
   saveSettings,
   defaultSettings
 };
@@ -35,18 +40,34 @@ const char menuText[][17] PROGMEM=
   {"GPS distance:"},
   #endif
   {"Pressure sensor:"},
-  {"Vario smoothing:"},
+  {"Vario smoothing"},
   {"Vario deadzone:"},
   {"Main drive:"},
   {"Capacity reset:"},
   {"Rx1 voltage:"},
   {"Rx2 voltage:"},
   {"Ext. Temp:"},
+  #ifdef SPEEDVARIO
+  {"SpeedVario mode:"},
+  {"Normal Speed :"},
+  {"Speed Spread F:"},
+  #endif
   {"Save and restart"},
-  {"Load defaults"}
+  {"Load defaults"},
+
 };
 
 const char aboutScreenText[17] PROGMEM= {VARIOGPS_VERSION};
+
+#ifdef SPEEDVARIO
+const char setSpeedVarioModeText[][12] PROGMEM=
+{
+  {" Base Vario"},
+  {" Speed"},
+  {" TEC-Vario"},
+  {" RC-Control"}
+};
+#endif
 
 const char setGpsModeText[][10] PROGMEM=
 {
@@ -159,7 +180,7 @@ void HandleMenu()
         }
         break;
       #endif 
-      case setVarioSmoothingValue:
+       case setVarioSmoothingValue:
         if (pressureSensor.smoothingValue < 1.0) {
           pressureSensor.smoothingValue = (float)((int(pressureSensor.smoothingValue*100))+1)/100;
         }
@@ -179,6 +200,23 @@ void HandleMenu()
           capacityMode--;
         }
         break;
+      #ifdef SPEEDVARIO
+      case setSpeedVarioMode:
+        if(speedVarioPreset.mode > SV_BASIC_VARIO){
+          speedVarioPreset.mode--;
+        }
+        break;
+      case setNormalSpeed:
+        if (speedVarioPreset.normalSpeed < 3000) {
+          speedVarioPreset.normalSpeed += 100;
+        }
+        break;
+      case setSpeedSpread:
+        if (speedVarioPreset.speedSpread < 3.0) {
+          speedVarioPreset.speedSpread += .1;
+        }
+        break;
+      #endif
     }
     
     _bSetDisplay = true;
@@ -223,6 +261,22 @@ void HandleMenu()
           capacityMode++;
         }
         break;
+      #ifdef SPEEDVARIO
+      case setSpeedVarioMode:
+        if(speedVarioPreset.mode < SV_RC_CONTROL){
+          speedVarioPreset.mode++;
+        }
+      case setNormalSpeed:
+        if (speedVarioPreset.normalSpeed > 0) {
+          speedVarioPreset.normalSpeed -= 100;
+        }
+        break;
+      case setSpeedSpread:
+        if (speedVarioPreset.speedSpread > 0.0) {
+          speedVarioPreset.speedSpread -= .1;
+        }
+        break;
+      #endif
       case enableRx1Voltage:
         enableRx1 = !enableRx1;
         break;
@@ -242,6 +296,11 @@ void HandleMenu()
         EEPROM.write(8, enableExtTemp);
         EEPROM.write(10,int(pressureSensor.smoothingValue*100));
         EEPROM.write(12,pressureSensor.deadzone);
+        #ifdef SPEEDVARIO
+        EEPROM.write(13,int(speedVarioPreset.normalSpeed/100));
+        EEPROM.write(14,int(speedVarioPreset.speedSpread*100));
+        EEPROM.write(15,speedVarioPreset.mode);
+        #endif
         resetFunc();
       case defaultSettings:
         for(int i=0; i < 50; i++){
@@ -296,6 +355,21 @@ void HandleMenu()
       if(currentSensor == mainDrive_disabled)goto startHandleMenu;
       memcpy_P( _bufferLine2, &setCapacityModeText[capacityMode], 16 );
       break;
+    #ifdef SPEEDVARIO
+    case setSpeedVarioMode:
+      memcpy_P( _bufferLine2, &setSpeedVarioModeText[speedVarioPreset.mode], 16 ); 
+      break;  
+    case setNormalSpeed:
+      if(pressureSensor.type == unknown)goto startHandleMenu;
+      sprintf( _bufferLine2, " %2dm/s",int(speedVarioPreset.normalSpeed/100));
+      break;
+    case setSpeedSpread:
+      if(pressureSensor.type == unknown)goto startHandleMenu;
+      // oh mann, was man zum Speicher sparen nicht alles treibt ;-))
+      sprintf(_bufferLine2, "%03d", int(speedVarioPreset.speedSpread*100));
+      sprintf(_bufferLine2, "%c.%c%c", _bufferLine2[0], _bufferLine2[1], _bufferLine2[2]);
+      break;
+    #endif
     case enableRx1Voltage:
       memcpy_P( _bufferLine2, &enableText[enableRx1], 16 );
       break;
@@ -312,3 +386,5 @@ void HandleMenu()
   
   _bSetDisplay = false;
 }
+
+
