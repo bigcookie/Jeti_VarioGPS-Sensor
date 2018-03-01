@@ -111,7 +111,7 @@
 #else
 #include <JetiExSerial.h>
 #include <JetiExProtocol.h>
-// #include <Wire.h>
+#include <Wire.h>
 #endif
 
 #include <EEPROM.h>
@@ -293,8 +293,6 @@ bool checkRCServoSignal() {
 
 void setup()
 {
-  Serial.begin(115200);//sets the baud rate
-
 #ifdef JETI_EX_SERIAL_OUT
   Serial.begin(115200);//sets the baud rate
   Serial.println("== SpeedVario in TEST Mode ==");
@@ -901,6 +899,7 @@ void loop()
 #endif
   jetiEx.DoJetiSend();
 }
+
 
 
 
