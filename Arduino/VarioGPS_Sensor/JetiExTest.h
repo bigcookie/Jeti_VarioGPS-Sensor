@@ -6,6 +6,7 @@ typedef struct /*_JetiSensorConst*/
   uint8_t dataType;
   uint8_t precision;
 }
+{
 JetiSensorConst;
 typedef const JetiSensorConst JETISENSOR_CONST;
 
@@ -152,4 +153,6 @@ class JetiExProtocol {
     // void SetSensorValueDate( uint8_t id, uint8_t day, uint8_t month, uint16_t year ) {};
     // void SetSensorValueTime( uint8_t id, uint8_t hour, uint8_t minute, uint8_t second ) {};
 };	
+
+
 
