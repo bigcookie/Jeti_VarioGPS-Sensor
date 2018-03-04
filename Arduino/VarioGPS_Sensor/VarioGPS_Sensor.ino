@@ -11,7 +11,7 @@
 
   ******************************************************************
   Versionen:
-  V3.2.3.5 10.02.18 Konfiguration SpeedVario mit JetiBox jr
+  V3.2.3.5 10.02.18 Konfiguration SpeedVario mit JetiBox jr2
   V3.2.3.4 09.02.18 BugFix TEK V und dV Detektion, Debugging mittels JetiExTest 
   V3.2.3.3 03.02.18 "Qualitätswert" für RC-Signal-Frequenz jetzt durch IRQ unabhänige Zählung der Impulse
   V3.2.3.2 02.02.18 Problem mit Interferenz IRQ Behandlung RC-Signal und Behandlung anderer serieller IF behoben.
