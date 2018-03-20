@@ -12,9 +12,10 @@
 
 // supported devices
 #define SUPPORT_BMx280     
-// #define SUPPORT_MS5611_LPS  
+//#define SUPPORT_MS5611_LPS  
 #define SUPPORT_GPS
 #define SPEEDVARIO
+#define ANALOG_R_DIVIDER_20_20
 
 // **************************************
 
@@ -34,6 +35,7 @@ enum
   ID_SV_SIG_LOSS_CNT,
   ID_SV_LAST_SIG_LOSS_PERIOD,
   ID_SV_SIGNAL_FRQ,
+  ID_SV_SIGNAL_FRQ_RETARDED,
   ID_SV_CTRL,
   ID_GPSVARIO,
 #endif
@@ -84,6 +86,7 @@ JETISENSOR_CONST sensors[] PROGMEM =
   { ID_SV_SIG_LOSS_CNT,         "SigLossCnt", " ",  JetiSensor::TYPE_14b, 0 },
   { ID_SV_LAST_SIG_LOSS_PERIOD,  "LastSigLossP","ms", JetiSensor::TYPE_22b, 0 },
   { ID_SV_SIGNAL_FRQ,    "Signal Freq",      "Hz",  JetiSensor::TYPE_14b, 0 },
+  { ID_SV_SIGNAL_FRQ_RETARDED,    "SigFreqRet",      "Hz",  JetiSensor::TYPE_14b, 0 },
   { ID_SV_CTRL,     "SV Control",      "%",     JetiSensor::TYPE_14b, 0 },
   { ID_GPSVARIO,     "GPS Vario",      "m/s",     JetiSensor::TYPE_22b, 2 },
 #endif
@@ -214,11 +217,16 @@ enum {
   Rx2_voltage
 };
 
-
+#ifdef ANALOG_R_DIVIDER_20_20 
+// max. voltage @5.0V vref             13.6V           51.8V           51.8V           33.4V           36.3V           62.7V           10.0V           10.0V
+const uint16_t voltageInputR1[] = {   14700,          14700,          14700,          13700,          10000,          18000,          20000,          20000,  };   //Resistor R1 in Ohms
+const uint16_t voltageInputR2[] = {    4700,           1000,           1000,           1500,           1000,           1000,          20000,          20000,  };   //Resistor R2 in Ohms
+#else
 //                                  AttoPilot_45    AttoPilot_90    AttoPilot_180     APM25           ACS712          ACS758        Rx1 Voltage     Rx2 Voltage
 // max. voltage @3.3V vref             13.6V           51.8V           51.8V           33.4V           36.3V           62.7V            9.9V            9.9V
 const uint16_t voltageInputR1[] = {   14700,          14700,          14700,          13700,          10000,          18000,          20000,          20000,  };   //Resistor R1 in Ohms
 const uint16_t voltageInputR2[] = {    4700,           1000,           1000,           1500,           1000,           1000,          10000,          10000,  };   //Resistor R2 in Ohms
+#endif
 
 /*
                   voltage input
@@ -364,6 +372,13 @@ const uint8_t mVperAmp[] =  {
 #define DEFAULT_ENABLE_Rx2        false
 
 #define DEFAULT_ENABLE_EXT_TEMP   false
+
+
+
+
+
+
+
 
 
 

@@ -6,11 +6,13 @@
   Vario, GPS, Strom/Spannung, Empfängerspannungen, Temperaturmessung
 
 */
-#define VARIOGPS_VERSION "Version V3.2.3.5"
+#define VARIOGPS_VERSION "Version V3.2.3.6"
 /*
 
   ******************************************************************
   Versionen:
+  V3.2.3.6 20.03.18 Retardierte SignalFrequenz "SigFreqRet" hinzugefügt
+                    RX1/2 Widerstandsteiler 20k/20k für Messung bis 10V bei 5V Arduino
   V3.2.3.5 10.02.18 Konfiguration SpeedVario mit JetiBox
   V3.2.3.4 09.02.18 BugFix TEK V und dV Detektion, Debugging mittels JetiExTest 
   V3.2.3.3 03.02.18 "Qualitätswert" für RC-Signal-Frequenz jetzt durch IRQ unabhänige Zählung der Impulse
@@ -181,6 +183,8 @@ volatile int sv_FallingT = 0;
 volatile int sv_PulsStartT = 0;
 volatile int sv_SignalPeriod = 0;
 volatile int sv_SignalFreq = 0;
+const uint16_t SignalFreqArraySize = 100;
+volatile int sv_SignalFreqArray[SignalFreqArraySize];
 volatile int sv_sigPeriodSum = 0;
 volatile int sv_PulsCnt = 0;
 static int sv_SignalLossCnt = 0;
@@ -246,7 +250,6 @@ void sv_falling() {
   if (period > 4900) {
     if ( sigCnt == MAXLOOP) {
       sv_SignalPeriod = sv_sigPeriodSum / MAXLOOP * 100;
-      // sv_SignalFreq = 1000000/sv_SignalPeriod;
       sv_sigPeriodSum = 0;
       sigCnt = 0;
     }
@@ -275,10 +278,10 @@ bool checkRCServoSignal() {
   int fallingPulseTime = sv_PulsStartT;
   int signalLossPeriod = (int) millis() - fallingPulseTime;
 
-  if (signalLossPeriod > 200) {
-    if (sv_LastSignalLossPeriod < signalLossPeriod ) {
-      sv_LastSignalLossPeriod = signalLossPeriod;
-    }
+  if (sv_LastSignalLossPeriod < signalLossPeriod ) {
+    sv_LastSignalLossPeriod = signalLossPeriod;
+  }
+  if (signalLossPeriod > 100) {
     if (!sv_SignalLossState) {
       sv_SignalLossCnt++;
     }
@@ -611,26 +614,29 @@ void loop()
       jetiEx.SetSensorValue( ID_SV_VARIO, value);
 
       static unsigned int loopCnt = 0;
-      if ((loopCnt++) % 100) { // avoid penetrating the Jeti Telemtry communication with too much traffic
-        jetiEx.SetSensorValue( ID_SV_SIG_LOSS_CNT, sv_SignalLossCnt);
-        jetiEx.SetSensorValue( ID_SV_LAST_SIG_LOSS_PERIOD, sv_LastSignalLossPeriod);
-
-      }
+      jetiEx.SetSensorValue( ID_SV_SIG_LOSS_CNT, sv_SignalLossCnt);
+      jetiEx.SetSensorValue( ID_SV_LAST_SIG_LOSS_PERIOD, sv_LastSignalLossPeriod);
 
       int freq = 0;
       int timeSinceLastMeasure = millis() - sv_LastFreqMeasureTime;
-      if (timeSinceLastMeasure > 300) {
-        sv_SignalFreq = (sv_PulsCnt - sv_LastFreqMeasureCnt) * 100 / (timeSinceLastMeasure / 10);
+      sv_SignalFreq = (sv_PulsCnt - sv_LastFreqMeasureCnt) * 100 / (timeSinceLastMeasure / 10);
 
-        jetiEx.SetSensorValue( ID_SV_SIGNAL_FRQ, (sv_SignalFreq));
-
-        sv_LastFreqMeasureTime = millis();
-        sv_LastFreqMeasureCnt = sv_PulsCnt;
+      static uint16_t SigFreqArrayPtr = 0;
+      static uint16_t SigFreqArrayRetardedPtr = 0;
+      SigFreqArrayPtr++;
+      if (SigFreqArrayPtr == SignalFreqArraySize) {
+        SigFreqArrayPtr = 0;
       }
+      SigFreqArrayRetardedPtr = SigFreqArrayPtr+1;
+      if (SigFreqArrayRetardedPtr == SignalFreqArraySize) {
+        SigFreqArrayPtr = 0;
+      }
+      sv_SignalFreqArray[SigFreqArrayPtr] = sv_SignalFreq;
+      jetiEx.SetSensorValue( ID_SV_SIGNAL_FRQ, sv_SignalFreqArray[SigFreqArrayPtr]);
+      jetiEx.SetSensorValue( ID_SV_SIGNAL_FRQ_RETARDED, sv_SignalFreqArray[SigFreqArrayRetardedPtr]);
 
-
-
-
+      sv_LastFreqMeasureTime = millis();
+      sv_LastFreqMeasureCnt = sv_PulsCnt;
 #endif
       jetiEx.SetSensorValue( ID_PRESSURE, uPressure );
       jetiEx.SetSensorValue( ID_TEMPERATURE, uTemperature );
@@ -899,6 +905,8 @@ void loop()
 #endif
   jetiEx.DoJetiSend();
 }
+
+
 
 
 
