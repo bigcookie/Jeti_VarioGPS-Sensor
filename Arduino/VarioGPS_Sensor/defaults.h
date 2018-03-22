@@ -12,7 +12,7 @@
 
 // supported devices
 #define SUPPORT_BMx280     
-//#define SUPPORT_MS5611_LPS  
+// #define SUPPORT_MS5611_LPS  
 #define SUPPORT_GPS
 #define SPEEDVARIO
 #define ANALOG_R_DIVIDER_20_20
@@ -372,6 +372,7 @@ const uint8_t mVperAmp[] =  {
 #define DEFAULT_ENABLE_Rx2        false
 
 #define DEFAULT_ENABLE_EXT_TEMP   false
+
 
 
 

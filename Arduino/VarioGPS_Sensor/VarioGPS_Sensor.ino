@@ -6,11 +6,13 @@
   Vario, GPS, Strom/Spannung, Empfängerspannungen, Temperaturmessung
 
 */
-#define VARIOGPS_VERSION "Version V3.2.3.6"
+#define VARIOGPS_VERSION "Vers: V3.2.3.7BM"
 /*
 
   ******************************************************************
   Versionen:
+  V3.2.3.7 21.03.18 Retardierte SignalFrequenz "SigFreqRet" BugFix Buffer
+                    HW Signalmessung an D2 mit 40k Widerstand
   V3.2.3.6 20.03.18 Retardierte SignalFrequenz "SigFreqRet" hinzugefügt
                     RX1/2 Widerstandsteiler 20k/20k für Messung bis 10V bei 5V Arduino
   V3.2.3.5 10.02.18 Konfiguration SpeedVario mit JetiBox
@@ -183,8 +185,8 @@ volatile int sv_FallingT = 0;
 volatile int sv_PulsStartT = 0;
 volatile int sv_SignalPeriod = 0;
 volatile int sv_SignalFreq = 0;
-const uint16_t SignalFreqArraySize = 100;
-volatile int sv_SignalFreqArray[SignalFreqArraySize];
+const uint8_t SIGNAL_FREQ_BUF_SIZE = 100;
+volatile int sv_SignalFreqArray[SIGNAL_FREQ_BUF_SIZE];
 volatile int sv_sigPeriodSum = 0;
 volatile int sv_PulsCnt = 0;
 static int sv_SignalLossCnt = 0;
@@ -593,7 +595,8 @@ void loop()
 
       long controlValue = 0;
       long value = 0;
-      if (speedVarioPreset.mode == SV_RC_CONTROL && checkRCServoSignal()) {
+      bool checkControlServo = checkRCServoSignal();
+      if (speedVarioPreset.mode == SV_RC_CONTROL && checkControlServo) {
         controlValue = (getRCServoPulse() - 1500) / 5;
         jetiEx.SetSensorValue( ID_SV_CTRL, controlValue);
       }
@@ -619,23 +622,24 @@ void loop()
 
       int freq = 0;
       int timeSinceLastMeasure = millis() - sv_LastFreqMeasureTime;
+      sv_LastFreqMeasureTime = millis();
       sv_SignalFreq = (sv_PulsCnt - sv_LastFreqMeasureCnt) * 100 / (timeSinceLastMeasure / 10);
 
-      static uint16_t SigFreqArrayPtr = 0;
-      static uint16_t SigFreqArrayRetardedPtr = 0;
-      SigFreqArrayPtr++;
-      if (SigFreqArrayPtr == SignalFreqArraySize) {
-        SigFreqArrayPtr = 0;
+      static uint8_t sigFreqArrayPtr = 0;
+      static uint8_t sigFreqArrayRetardedPtr = 0;
+      sigFreqArrayPtr++;
+      if (sigFreqArrayPtr == SIGNAL_FREQ_BUF_SIZE) {
+        sigFreqArrayPtr = 0;
       }
-      SigFreqArrayRetardedPtr = SigFreqArrayPtr+1;
-      if (SigFreqArrayRetardedPtr == SignalFreqArraySize) {
-        SigFreqArrayPtr = 0;
+      sigFreqArrayRetardedPtr = sigFreqArrayPtr+1;
+      if (sigFreqArrayRetardedPtr == SIGNAL_FREQ_BUF_SIZE) {
+        sigFreqArrayRetardedPtr = 0;
       }
-      sv_SignalFreqArray[SigFreqArrayPtr] = sv_SignalFreq;
-      jetiEx.SetSensorValue( ID_SV_SIGNAL_FRQ, sv_SignalFreqArray[SigFreqArrayPtr]);
-      jetiEx.SetSensorValue( ID_SV_SIGNAL_FRQ_RETARDED, sv_SignalFreqArray[SigFreqArrayRetardedPtr]);
+      sv_SignalFreqArray[sigFreqArrayPtr] = sv_SignalFreq;
+      jetiEx.SetSensorValue( ID_SV_SIGNAL_FRQ, sv_SignalFreqArray[sigFreqArrayPtr]);
+      jetiEx.SetSensorValue( ID_SV_SIGNAL_FRQ_RETARDED, sv_SignalFreqArray[sigFreqArrayRetardedPtr]);
 
-      sv_LastFreqMeasureTime = millis();
+
       sv_LastFreqMeasureCnt = sv_PulsCnt;
 #endif
       jetiEx.SetSensorValue( ID_PRESSURE, uPressure );
@@ -905,6 +909,7 @@ void loop()
 #endif
   jetiEx.DoJetiSend();
 }
+
 
 
 
