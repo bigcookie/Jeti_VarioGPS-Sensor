@@ -11,11 +11,17 @@
 #define V_REF                     5000        // set supply voltage from 1800 to 5500mV
 
 // supported devices
-#define SUPPORT_BMx280     
-// #define SUPPORT_MS5611_LPS  
+#define SUPPORT_BMx280                        // comment to disable devices
+#define SUPPORT_MS5611_LPS
 #define SUPPORT_GPS
+// #define SUPPORT_MAIN_DRIVE
+#define SUPPORT_RX_VOLTAGE
+// #define SUPPORT_EXT_TEMP
 #define SPEEDVARIO
 #define ANALOG_R_DIVIDER_20_20
+
+// support JetiBox Menu
+#define SUPPORT_JETIBOX_MENU
 
 // **************************************
 
@@ -372,6 +378,7 @@ const uint8_t mVperAmp[] =  {
 #define DEFAULT_ENABLE_Rx2        false
 
 #define DEFAULT_ENABLE_EXT_TEMP   false
+
 
 
 

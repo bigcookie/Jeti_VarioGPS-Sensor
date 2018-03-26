@@ -6,11 +6,12 @@
   Vario, GPS, Strom/Spannung, Empfängerspannungen, Temperaturmessung
 
 */
-#define VARIOGPS_VERSION "Vers: V3.2.3.7BM"
+#define VARIOGPS_VERSION "Vers: V3.2.3.8"
 /*
 
   ******************************************************************
   Versionen:
+  V3.2.3.8 26.03.18 Bugfix bei float<->int casting Smoothing Factor (merge von master)
   V3.2.3.7 21.03.18 Retardierte SignalFrequenz "SigFreqRet" BugFix Buffer
                     HW Signalmessung an D2 mit 40k Widerstand
   V3.2.3.6 20.03.18 Retardierte SignalFrequenz "SigFreqRet" hinzugefügt
@@ -31,7 +32,9 @@
                                                      sonst : Speed-Anzeige als Landehilfe mit Trimmbereich +-49% für Landespeed
                                                      <-50% : Energie kompensiertes Vario (GPS Speed, Versuch ob es was bringt)
                     in der JetiBox kann die Landespeed als Wert "Normal Speed:" in m/s gespeichert werden.
-  V2.1.1  13.01.17  kleine Fehlerbehebung mit libraries
+  V2.2    15.02.18  Vario Tiefpass mit nur einem Smoothing Factor (by RS)
+                    Jeder Sensor kann mit #define deaktiviert werden
+  V2.1.1  13.01.18  kleine Fehlerbehebung mit libraries
   V2.1    23.12.17  Analog Messeingänge stark überarbeitet, NTC-Temperaturmessung hinzugefügt,
                     startup-/auto-/maual-reset für Kapazitätsanzeige, SRAM-Speicheroptimierung
   V2.0.2  03.12.17  Fehler in GPS Trip behoben
@@ -124,15 +127,15 @@
 JetiExProtocol jetiEx;
 
 #ifdef SUPPORT_GPS
-#include <TinyGPS++.h>
-#include <AltSoftSerial.h>
-TinyGPSPlus gps;
-AltSoftSerial gpsSerial;
+  #include <TinyGPS++.h>
+  #include <AltSoftSerial.h>
+  TinyGPSPlus gps;
+  AltSoftSerial gpsSerial;
 #endif
 
 #ifdef SUPPORT_BMx280
-#include "BMx_Sensor.h"
-BMx_Sensor boschPressureSensor;
+  #include "BMx_Sensor.h"
+  BMx_Sensor boschPressureSensor;
 #endif
 
 #ifdef SUPPORT_MS5611_LPS
@@ -146,7 +149,7 @@ LPS lps;
 #error unsupported supply voltage
 #endif
 
-#define MEASURING_INTERVAL        180         //ms 
+#define MEASURING_INTERVAL        180         //ms
 #define EEPROM_ADRESS_CAPACITY    20
 
 struct {
@@ -309,30 +312,30 @@ void setup()
 #endif
 
   // identify sensor
-#ifdef SUPPORT_BMx280
-  pressureSensor.type = boschPressureSensor.begin(0x76);
-  if (pressureSensor.type == unknown) {
-    pressureSensor.type = boschPressureSensor.begin(0x77);
-  }
-#endif
-#ifdef SUPPORT_MS5611_LPS
-  if (pressureSensor.type == unknown) {
-    if (lps.init()) {
-      Wire.begin();
-      lps.enableDefault();
-      pressureSensor.type = LPS_;
-    } else {
-      Wire.beginTransmission(MS5611_ADDRESS); // if no Bosch sensor, check if return an ACK on MS5611 address
-      if (Wire.endTransmission() == 0) {
-        ms5611.begin(MS5611_ULTRA_HIGH_RES);
-        pressureSensor.type = MS5611_;
+  #ifdef SUPPORT_BMx280
+    pressureSensor.type = boschPressureSensor.begin(0x76);
+    if(pressureSensor.type == unknown){
+      pressureSensor.type = boschPressureSensor.begin(0x77);
+    }
+  #endif
+  #ifdef SUPPORT_MS5611_LPS
+    if(pressureSensor.type == unknown){
+      if (lps.init()) {
+        Wire.begin();
+        lps.enableDefault();
+        pressureSensor.type = LPS_;
+      } else {
+        Wire.beginTransmission(MS5611_ADDRESS); // if no Bosch sensor, check if return an ACK on MS5611 address
+        if (Wire.endTransmission() == 0) {
+          ms5611.begin(MS5611_ULTRA_HIGH_RES);
+          pressureSensor.type = MS5611_;
+        }
       }
     }
-  }
-#endif
+  #endif
 
-
-  switch (pressureSensor.type) {
+  #ifdef SUPPORT_BMx280 || SUPPORT_MS5611_LPS
+  switch (pressureSensor.type){
     case BMP280:
       pressureSensor.smoothingValue = BMx280_SMOOTHING;
       pressureSensor.deadzone = BMx280_DEADZONE;
@@ -350,38 +353,48 @@ void setup()
       pressureSensor.deadzone = LPS_DEADZONE;
       break;
   }
-#ifdef SPEEDVARIO
+  #endif
+  #ifdef SPEEDVARIO
   // default settings, if there are no presets
   speedVarioPreset.normalSpeed = SPEEDVARIO_NORMALSPEED;
   speedVarioPreset.speedSpread = SPEEDVARIO_SPEEDSPREAD;
   speedVarioPreset.mode = SV_RC_CONTROL;
-#endif
+  #endif
 
   // read settings from eeprom
-#ifdef SUPPORT_GPS
+  #ifdef SUPPORT_GPS
   if (EEPROM.read(1) != 0xFF) {
     gpsSettings.mode = EEPROM.read(1);
   }
-#endif
-
   if (EEPROM.read(2) != 0xFF) {
     gpsSettings.distance3D = EEPROM.read(2);
   }
+  #endif
+
+  #ifdef SUPPORT_MAIN_DRIVE
   if (EEPROM.read(3) != 0xFF) {
     currentSensor = EEPROM.read(3);
   }
   if (EEPROM.read(5) != 0xFF) {
     capacityMode = EEPROM.read(5);
   }
+  #endif
+
+  #ifdef SUPPORT_RX_VOLTAGE
   if (EEPROM.read(6) != 0xFF) {
     enableRx1 = EEPROM.read(6);
   }
   if (EEPROM.read(7) != 0xFF) {
     enableRx2 = EEPROM.read(7);
   }
+  #endif
+
+  #ifdef SUPPORT_EXT_TEMP
   if (EEPROM.read(8) != 0xFF) {
     enableExtTemp = EEPROM.read(8);
   }
+  #endif
+
   if (EEPROM.read(10) != 0xFF) {
     pressureSensor.smoothingValue = (float)EEPROM.read(10) / 100;
   }
@@ -405,6 +418,10 @@ void setup()
   gpsSerial.begin(GPSBaud);
 #endif
 
+  #ifdef SUPPORT_GPS
+    // init GPS
+    gpsSerial.begin(GPSBaud);
+  #endif
 
   // Setup sensors
   if (pressureSensor.type == unknown) {
@@ -449,8 +466,9 @@ void setup()
     jetiEx.SetSensorActive( ID_CURRENT, false, sensors );
     jetiEx.SetSensorActive( ID_CAPACITY, false, sensors );
     jetiEx.SetSensorActive( ID_POWER, false, sensors );
-  } else {
-    if (capacityMode > startup) {
+    #ifdef SUPPORT_MAIN_DRIVE
+  }else{
+    if(capacityMode > startup){
       // read capacity from eeprom
       int eeAddress = EEPROM_ADRESS_CAPACITY;
       EEPROM.get(eeAddress, capacityConsumption);
@@ -464,6 +482,7 @@ void setup()
         }
       }
     }
+    #endif
   }
 
   if (!enableRx1) {
@@ -490,9 +509,10 @@ void loop()
   static long uRelAltitude = 0;
   static long uAbsAltitude = 0;
 
-  if ((millis() - lastTime) > MEASURING_INTERVAL) {
+  if((millis() - lastTime) > MEASURING_INTERVAL){
 
-    if (pressureSensor.type != unknown) {
+    #ifdef SUPPORT_BMx280 || SUPPORT_MS5611_LPS
+    if(pressureSensor.type != unknown){
       static bool setStartAltitude = false;
       static float lastVariofilter = 0;
       static long lastAltitude = 0;
@@ -503,8 +523,8 @@ void loop()
       int uHumidity;
 
       // Read sensormodule values
-      switch (pressureSensor.type) {
-#ifdef SUPPORT_MS5611_LPS
+      switch (pressureSensor.type){
+        #ifdef SUPPORT_MS5611_LPS
         case MS5611_:
           uPressure = ms5611.readPressure(true); // In Pascal (100 Pa = 1 hPa = 1 mbar)
           curAltitude = ms5611.getAltitude(uPressure, 101325) * 100; // In Centimeter
@@ -646,11 +666,13 @@ void loop()
       jetiEx.SetSensorValue( ID_TEMPERATURE, uTemperature );
 
     }
+    #endif
 
     lastTime = millis();
 
     // analog input
-    if (currentSensor) {
+    #ifdef SUPPORT_MAIN_DRIVE
+    if(currentSensor){
       // Voltage
       float cuVolt = readAnalog_mV(getVoltageSensorTyp(), VOLTAGE_PIN) / 1000.0;
       jetiEx.SetSensorValue( ID_VOLTAGE, cuVolt * 10);
@@ -658,7 +680,7 @@ void loop()
       // Current
       uint16_t ampOffset;
 
-      if (currentSensor <= APM25_A) {
+      if (currentSensor <= APM25_A){
         ampOffset = Atto_APM_offset;
       } else if (currentSensor > ACS758_200B) {
         ampOffset = ACS_U_offset;
@@ -667,9 +689,9 @@ void loop()
       }
 
       float mVanalogIn = (analogRead(CURRENT_PIN) / 1023.0) * V_REF; // mV
-      float cuAmp = (mVanalogIn - ampOffset) / mVperAmp[currentSensor - 1];
-      if (currentSensor > APM25_A) {
-        cuAmp *= 5000.0 / V_REF;
+      float cuAmp = (mVanalogIn - ampOffset) / mVperAmp[currentSensor-1];
+      if (currentSensor > APM25_A){
+        cuAmp *= 5000.0/V_REF;
       }
 
       jetiEx.SetSensorValue( ID_CURRENT, cuAmp * 10);
@@ -692,16 +714,20 @@ void loop()
       // Power
       jetiEx.SetSensorValue( ID_POWER, cuAmp * cuVolt);
     }
+    #endif
 
-    if (enableRx1) {
-      jetiEx.SetSensorValue( ID_RX1_VOLTAGE, readAnalog_mV(Rx1_voltage, RX1_VOLTAGE_PIN) / 10);
+    #ifdef SUPPORT_RX_VOLTAGE
+    if(enableRx1){
+      jetiEx.SetSensorValue( ID_RX1_VOLTAGE, readAnalog_mV(Rx1_voltage,RX1_VOLTAGE_PIN)/10);
     }
 
     if (enableRx2) {
       jetiEx.SetSensorValue( ID_RX2_VOLTAGE, readAnalog_mV(Rx2_voltage, RX2_VOLTAGE_PIN) / 10);
     }
+    #endif
 
-    if (enableExtTemp) {
+    #ifdef SUPPORT_EXT_TEMP
+    if(enableExtTemp){
       // convert the value to resistance
       float aIn = 1023.0 / analogRead(TEMPERATURE_PIN) - 1.0;
       aIn = SERIESRESISTOR / aIn;
@@ -715,14 +741,14 @@ void loop()
       steinhart = 1.0 / steinhart;                        // Invert
       steinhart -= 273.15 - SELF_HEAT;                    // convert to °C and self-heat compensation
 
-#ifdef UNIT_US
-      // EU to US conversions
-      steinhart = steinhart * 1.8 + 320;
-#endif
+      #ifdef UNIT_US
+        // EU to US conversions
+        steinhart = steinhart * 1.8 + 320;
+      #endif
 
-      jetiEx.SetSensorValue( ID_EXT_TEMP, steinhart * 10);
+      jetiEx.SetSensorValue( ID_EXT_TEMP, steinhart*10);
     }
-
+    #endif
   }
 
 #ifdef SUPPORT_GPS
@@ -804,12 +830,13 @@ void loop()
         timeSpeedLastinMS = timeSpeedActinMS;
 #endif
 
-#ifdef UNIT_US
-        jetiEx.SetSensorValue( ID_GPSSPEED, _GPS_MPH_PER_KNOT * gpsSpeed / 100.0 );
-#else
-        jetiEx.SetSensorValue( ID_GPSSPEED, _GPS_KMPH_PER_KNOT * gpsSpeed / 100.0 );
-#endif
       }
+
+      #ifdef UNIT_US
+        jetiEx.SetSensorValue( ID_GPSSPEED, gps.speed.mph() );
+      #else
+        jetiEx.SetSensorValue( ID_GPSSPEED, gps.speed.kmph() );
+      #endif
 
       jetiEx.SetSensorValue( ID_HEADING, gps.course.deg() );
 
@@ -878,41 +905,38 @@ void loop()
 
     jetiEx.SetSensorValue( ID_SATS, gps.satellites.value() );
     jetiEx.SetSensorValue( ID_HDOP, gps.hdop.value());
-#ifndef UNIT_US
-    //EU units
-    jetiEx.SetSensorValue( ID_TRIP, tripDist / 10 );
-    jetiEx.SetSensorValue( ID_DIST, distToHome );
-#endif
-#ifdef UNIT_US
-    //US units
-    jetiEx.SetSensorValue( ID_TRIP, tripDist * 0.06213 );
-    jetiEx.SetSensorValue( ID_DIST, distToHome * 3.2808399);
-#endif
+    #ifndef UNIT_US
+      //EU units
+      jetiEx.SetSensorValue( ID_TRIP, tripDist/10 );
+      jetiEx.SetSensorValue( ID_DIST, distToHome );
+    #endif
+    #ifdef UNIT_US
+      //US units
+      jetiEx.SetSensorValue( ID_TRIP, tripDist*0.06213 );
+      jetiEx.SetSensorValue( ID_DIST, distToHome*3.2808399);
+    #endif
 
   }
-#endif
+  #endif
 
-#ifdef UNIT_US
-  // EU to US conversions
-  // ft/s = m/s / 0.3048
-  // inHG = hPa * 0,029529983071445
-  // ft = m / 0.3048
-  uRelAltitude /= 0.3048;
-  uAbsAltitude /= 0.3048;
-#endif
+  #ifdef UNIT_US
+    // EU to US conversions
+    // ft/s = m/s / 0.3048
+    // inHG = hPa * 0,029529983071445
+    // ft = m / 0.3048
+    uRelAltitude /= 0.3048;
+    uAbsAltitude /= 0.3048;
+  #endif
 
   jetiEx.SetSensorValue( ID_ALTREL, uRelAltitude );
   jetiEx.SetSensorValue( ID_ALTABS, uAbsAltitude );
 
-#ifndef JETI_EX_SERIAL_OUT
+  #ifndef JETI_EX_SERIAL_OUT
+  #ifdef SUPPORT_JETIBOX_MENU
   HandleMenu();
-#endif
+  #endif
+  #endif
   jetiEx.DoJetiSend();
 }
-
-
-
-
-
 
 
