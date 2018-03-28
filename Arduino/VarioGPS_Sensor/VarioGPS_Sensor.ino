@@ -11,7 +11,7 @@
 
   ******************************************************************
   Versionen:
-  V3.2.3.9 28.03.18 BugFix: RC-Signal an D2 Behandlung auch ohne Drucksensor 
+  V3.2.3.9 28.03.18 BugFix: RC-Signal an D2 Behandlung auch ohne Drucksensor
   V3.2.3.8 26.03.18 Bugfix bei float<->int casting Smoothing Factor (merge von master)
   V3.2.3.7 21.03.18 Retardierte SignalFrequenz "SigFreqRet" BugFix Buffer
                     HW Signalmessung an D2 mit 40k Widerstand
@@ -512,6 +512,15 @@ void loop()
 
   if((millis() - lastTime) > MEASURING_INTERVAL){
 
+      long controlValue = 0;
+      long value = 0;
+      bool checkControlServo = checkRCServoSignal();
+      if (speedVarioPreset.mode == SV_RC_CONTROL && checkControlServo) {
+        controlValue = (getRCServoPulse() - 1500) / 5;
+        jetiEx.SetSensorValue( ID_SV_CTRL, controlValue);
+      }
+
+
     #ifdef SUPPORT_BMx280 || SUPPORT_MS5611_LPS
     if(pressureSensor.type != unknown){
       static bool setStartAltitude = false;
@@ -613,14 +622,6 @@ void loop()
       Serial.print("cm/s");
       Serial.println();
 #endif
-
-      long controlValue = 0;
-      long value = 0;
-      bool checkControlServo = checkRCServoSignal();
-      if (speedVarioPreset.mode == SV_RC_CONTROL && checkControlServo) {
-        controlValue = (getRCServoPulse() - 1500) / 5;
-        jetiEx.SetSensorValue( ID_SV_CTRL, controlValue);
-      }
 
       if (speedVarioPreset.mode == SV_BASIC_VARIO || controlValue > +50) {
         // native vario value
@@ -941,3 +942,4 @@ void loop()
   #endif
   jetiEx.DoJetiSend();
 }
+
