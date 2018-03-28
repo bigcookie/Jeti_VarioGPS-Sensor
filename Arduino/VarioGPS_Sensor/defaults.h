@@ -68,9 +68,9 @@ TYPE_6b   int6_t    Data type 6b (-31 to 31)
 TYPE_14b  int14_t   Data type 14b (-8191 to 8191)
 TYPE_22b  int22_t   Data type 22b (-2097151 to 2097151)
 TYPE_DT   int22_t   Special data type for time and date
-TYPE_30b  int30_t   Data type 30b (-536870911 to 536870911) 
+TYPE_30b  int30_t   Data type 30b (-536870911 to 536870911)
 TYPE_GPS  int30_t   Special data type for GPS coordinates:  lo/hi minute - lo/hi degree.
-*/    
+*/
 
 // Sensor names and unit[EU]
 #ifndef UNIT_US
@@ -127,7 +127,7 @@ JETISENSOR_CONST sensors[] PROGMEM =
   { ID_GPSSPEED,    "Speed",      "mph",        JetiSensor::TYPE_14b, 0 },
   { ID_ALTREL,      "Rel. Altit", "ft",         JetiSensor::TYPE_22b, 1 },
   { ID_ALTABS,      "Altitude",   "ft",         JetiSensor::TYPE_22b, 0 },
-  { ID_VARIO,       "Vario",      "ft/s",       JetiSensor::TYPE_22b, 2 }, 
+  { ID_VARIO,       "Vario",      "ft/s",       JetiSensor::TYPE_22b, 2 },
 #ifdef SPEEDVARIO
   { ID_SPEEDVARIO,  "SpeedVario",      "??",   JetiSensor::TYPE_22b, 2 },
 #endif
@@ -190,7 +190,7 @@ enum {
   GPS_extended
 };
 
-#ifdef SPEEDVARIO 
+#ifdef SPEEDVARIO
 #define SPEEDVARIO_NORMALSPEED 1200
 #define SPEEDVARIO_SPEEDSPREAD 1.0
 #define SPEEDVARIO_SIG_FREQ 50
@@ -211,7 +211,7 @@ enum {
 #define RX2_VOLTAGE_PIN     A3
 
 
-// suported voltage sensors 
+// suported voltage sensors
 enum {
   AttoPilot_45V,
   AttoPilot_90V,
@@ -223,7 +223,7 @@ enum {
   Rx2_voltage
 };
 
-#ifdef ANALOG_R_DIVIDER_20_20 
+#ifdef ANALOG_R_DIVIDER_20_20
 // max. voltage @5.0V vref             13.6V           51.8V           51.8V           33.4V           36.3V           62.7V           10.0V           10.0V
 const uint16_t voltageInputR1[] = {   14700,          14700,          14700,          13700,          10000,          18000,          20000,          20000,  };   //Resistor R1 in Ohms
 const uint16_t voltageInputR2[] = {    4700,           1000,           1000,           1500,           1000,           1000,          20000,          20000,  };   //Resistor R2 in Ohms
@@ -271,9 +271,9 @@ enum {
 #define MAX_CUR_TO_SAVE_CAPACITY      2             // A
 
 // voltage difference to reset
-#define VOLTAGE_DIFFERENCE            2             // %  
+#define VOLTAGE_DIFFERENCE            2             // %
 
-// suported current sensors 
+// suported current sensors
 enum {
   mainDrive_disabled,
   AttoPilot_45A,
@@ -303,7 +303,7 @@ const uint16_t ACS_B_offset = V_REF/2; //bi-directional offset in mV ( V_REF / 2
 const uint16_t ACS_U_offset = V_REF/8.33;  //uni-directional offset in mV ( V_REF / 8.33)
 
                          //   mV/Amp @5V            sensor type
-const uint8_t mVperAmp[] =  { 
+const uint8_t mVperAmp[] =  {
                               73,               // AttoPilot 45A
                               37,               // AttoPilot 90A
                               18,               // AttoPilot 180A
@@ -316,7 +316,7 @@ const uint8_t mVperAmp[] =  {
                                40,              // ACS758-50B
                                20,              // ACS758-100B
                                13,              // ACS758-150B
-                               10,              // ACS758-200B 
+                               10,              // ACS758-200B
                                60,              // ACS758-50U
                                40,              // ACS758-100U
                                27,              // ACS758-150U
@@ -378,18 +378,4 @@ const uint8_t mVperAmp[] =  {
 #define DEFAULT_ENABLE_Rx2        false
 
 #define DEFAULT_ENABLE_EXT_TEMP   false
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
