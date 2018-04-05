@@ -12,7 +12,7 @@
 
 // supported devices
 #define SUPPORT_BMx280                        // comment to disable devices
-#define SUPPORT_MS5611_LPS
+// #define SUPPORT_MS5611_LPS
 #define SUPPORT_GPS
 // #define SUPPORT_MAIN_DRIVE
 #define SUPPORT_RX_VOLTAGE
@@ -39,11 +39,12 @@ enum
 #ifdef SPEEDVARIO
   ID_SV_VARIO,
   ID_SV_SIG_LOSS_CNT,
-  ID_SV_LAST_SIG_LOSS_PERIOD,
+  ID_SV_SIGNAL_DURATION_MAX,
   ID_SV_SIGNAL_FRQ,
   ID_SV_SIGNAL_FRQ_RETARDED,
   ID_SV_CTRL,
   ID_GPSVARIO,
+  ID_SV_SIGNAL_DURATION,
 #endif
   ID_DIST,
   ID_TRIP,
@@ -90,7 +91,8 @@ JETISENSOR_CONST sensors[] PROGMEM =
 #ifdef SPEEDVARIO
   { ID_SV_VARIO,    "SpeedVario",      "m/s",   JetiSensor::TYPE_22b, 2 },
   { ID_SV_SIG_LOSS_CNT,         "SigLossCnt", " ",  JetiSensor::TYPE_14b, 0 },
-  { ID_SV_LAST_SIG_LOSS_PERIOD,  "LastSigLossP","ms", JetiSensor::TYPE_22b, 0 },
+  { ID_SV_SIGNAL_DURATION_MAX,  "SigDuraMax","ms", JetiSensor::TYPE_22b, 0 },
+  { ID_SV_SIGNAL_DURATION,  "SigDura","ms", JetiSensor::TYPE_22b, 0 },
   { ID_SV_SIGNAL_FRQ,    "Signal Freq",      "Hz",  JetiSensor::TYPE_14b, 0 },
   { ID_SV_SIGNAL_FRQ_RETARDED,    "SigFreqRet",      "Hz",  JetiSensor::TYPE_14b, 0 },
   { ID_SV_CTRL,     "SV Control",      "%",     JetiSensor::TYPE_14b, 0 },
@@ -378,4 +380,3 @@ const uint8_t mVperAmp[] =  {
 #define DEFAULT_ENABLE_Rx2        false
 
 #define DEFAULT_ENABLE_EXT_TEMP   false
-

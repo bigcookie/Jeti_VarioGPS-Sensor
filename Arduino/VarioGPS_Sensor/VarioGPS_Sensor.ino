@@ -6,11 +6,12 @@
   Vario, GPS, Strom/Spannung, Empfängerspannungen, Temperaturmessung
 
 */
-#define VARIOGPS_VERSION "Vers: V3.2.3.9"
+#define VARIOGPS_VERSION "Vers: V3.2.3.10"
 /*
 
   ******************************************************************
   Versionen:
+  V3.2.3.10 4.3.18 BugFix: RC-Signal Auswertung SigDura, SigDuraMax
   V3.2.3.9 28.03.18 BugFix: RC-Signal an D2 Behandlung auch ohne Drucksensor
   V3.2.3.8 26.03.18 Bugfix bei float<->int casting Smoothing Factor (merge von master)
   V3.2.3.7 21.03.18 Retardierte SignalFrequenz "SigFreqRet" BugFix Buffer
@@ -112,7 +113,7 @@
 */
 
 // uncomment this, to get debug Serial.prints instead of JetiExBus protocol for debugging
-// #define JETI_EX_SERIAL_OUT
+ // #define JETI_EX_SERIAL_OUT
 
 #ifdef JETI_EX_SERIAL_OUT
 #include "JetiExTest.h"
@@ -194,9 +195,10 @@ volatile int sv_SignalFreqArray[SIGNAL_FREQ_BUF_SIZE];
 volatile int sv_sigPeriodSum = 0;
 volatile int sv_PulsCnt = 0;
 static int sv_SignalLossCnt = 0;
-static int sv_LastSignalLossPeriod = 0;
+static int sv_SignalDurationMax = 0;
+static int sv_SignalDuration = 0;
 static int sv_LastFreqMeasureTime = 0;
-static int sv_LastFreqMeasureCnt = 0;
+static int sv_lastPulsCnt = 0;
 double sv_VarioEnergyCompensationValue = 0.0;
 double sv_SpeedinMPS = 0.0;
 #endif
@@ -239,6 +241,7 @@ uint8_t getVoltageSensorTyp() {
 #ifdef SPEEDVARIO
 
 void sv_rising() {
+  sv_SignalDuration = millis() - sv_PulsStartT;
   sv_PulsStartT = millis();
   sv_RisingT = micros();
   attachInterrupt(0, sv_falling, FALLING);
@@ -249,25 +252,11 @@ void sv_rising() {
 volatile int sigCnt = 0;
 void sv_falling() {
   volatile int now = micros();
-  volatile int period = now - sv_FallingT;
   sv_PulsCnt++;
-  sv_sigPeriodSum = sv_sigPeriodSum +  period / 100;
-  sigCnt++;
-  if (period > 4900) {
-    if ( sigCnt == MAXLOOP) {
-      sv_SignalPeriod = sv_sigPeriodSum / MAXLOOP * 100;
-      sv_sigPeriodSum = 0;
-      sigCnt = 0;
-    }
-  }
-
   sv_FallingT = now;
+  sv_PulseWidth = sv_FallingT - sv_RisingT;
 
   attachInterrupt(0, sv_rising, RISING);
-  if ( period > sv_SignalPeriod - 100) {
-    sv_PulseWidth = sv_FallingT - sv_RisingT;
-  }
-
 }
 
 int getRCServoPulse() {
@@ -282,12 +271,13 @@ int getRCServoPulse() {
 bool checkRCServoSignal() {
   static bool sv_SignalLossState = false;
   int fallingPulseTime = sv_PulsStartT;
-  int signalLossPeriod = (int) millis() - fallingPulseTime;
+  int sigDuration = (int) millis() - fallingPulseTime;
+  sv_SignalDuration = max(sigDuration, sv_SignalDuration);
 
-  if (sv_LastSignalLossPeriod < signalLossPeriod ) {
-    sv_LastSignalLossPeriod = signalLossPeriod;
+  if (sv_SignalDurationMax < sv_SignalDuration ) {
+    sv_SignalDurationMax = sv_SignalDuration;
   }
-  if (signalLossPeriod > 100) {
+  if (sv_SignalDuration > 100) {
     if (!sv_SignalLossState) {
       sv_SignalLossCnt++;
     }
@@ -510,16 +500,20 @@ void loop()
   static long uRelAltitude = 0;
   static long uAbsAltitude = 0;
 
+  #ifdef SPEEDVARIO
+  bool checkControlServo = checkRCServoSignal();
+  #endif
+
   if((millis() - lastTime) > MEASURING_INTERVAL){
 
-      long controlValue = 0;
-      long value = 0;
-      bool checkControlServo = checkRCServoSignal();
-      if (speedVarioPreset.mode == SV_RC_CONTROL && checkControlServo) {
-        controlValue = (getRCServoPulse() - 1500) / 5;
-        jetiEx.SetSensorValue( ID_SV_CTRL, controlValue);
-      }
-
+    #ifdef SPEEDVARIO
+    long controlValue = 0;
+    long value = 0;
+    if (speedVarioPreset.mode == SV_RC_CONTROL && checkControlServo) {
+      controlValue = (getRCServoPulse() - 1500) / 5;
+      jetiEx.SetSensorValue( ID_SV_CTRL, controlValue);
+    }
+    #endif
 
     #ifdef SUPPORT_BMx280 || SUPPORT_MS5611_LPS
     if(pressureSensor.type != unknown){
@@ -606,7 +600,7 @@ void loop()
       jetiEx.SetSensorValue( ID_VARIO, uVario );
 
 #ifdef SPEEDVARIO
-#ifdef JETI_EX_SERIAL_OUT
+#ifdef JETI_EX_SERIAL_OUT_1
       Serial.print("  === VARIO: ");
       Serial.print(millis());
       Serial.print(" : alt = ");
@@ -647,12 +641,12 @@ void loop()
     #define SPEEDVARIO
     static unsigned int loopCnt = 0;
     jetiEx.SetSensorValue( ID_SV_SIG_LOSS_CNT, sv_SignalLossCnt);
-    jetiEx.SetSensorValue( ID_SV_LAST_SIG_LOSS_PERIOD, sv_LastSignalLossPeriod);
-
-    int freq = 0;
+    jetiEx.SetSensorValue( ID_SV_SIGNAL_DURATION_MAX, sv_SignalDurationMax);
+    jetiEx.SetSensorValue( ID_SV_SIGNAL_DURATION, sv_SignalDuration);
     int timeSinceLastMeasure = millis() - sv_LastFreqMeasureTime;
     sv_LastFreqMeasureTime = millis();
-    sv_SignalFreq = (sv_PulsCnt - sv_LastFreqMeasureCnt) * 100 / (timeSinceLastMeasure / 10);
+    sv_SignalFreq = (sv_PulsCnt - sv_lastPulsCnt) * 1000 / timeSinceLastMeasure;
+    sv_lastPulsCnt = sv_PulsCnt;
 
     static uint8_t sigFreqArrayPtr = 0;
     static uint8_t sigFreqArrayRetardedPtr = 0;
@@ -668,8 +662,24 @@ void loop()
     jetiEx.SetSensorValue( ID_SV_SIGNAL_FRQ, sv_SignalFreqArray[sigFreqArrayPtr]);
     jetiEx.SetSensorValue( ID_SV_SIGNAL_FRQ_RETARDED, sv_SignalFreqArray[sigFreqArrayRetardedPtr]);
 
+    #ifdef JETI_EX_SERIAL_OUT
+      Serial.print("  === SIGNAL_ANALYSIS: ");
+      Serial.print(millis());
+      Serial.print(" : SIG_LOSS_CNT = ");
+      Serial.print(sv_SignalLossCnt);
+      Serial.print(" : SIGNAL_DURATION_MAX = ");
+      Serial.print(sv_SignalDurationMax);
+      Serial.print(" : SIGNAL_DURATION = ");
+      Serial.print(sv_SignalDuration);
+      Serial.print("ms : SIGNAL_FREQ = ");
+      Serial.print(sv_SignalFreq);
+      Serial.print("Hz : SIGNAL_PERIOD = ");
+      Serial.print(1000/sv_SignalFreq);
+      Serial.print("ms ");
+      Serial.println();
+#endif
 
-    sv_LastFreqMeasureCnt = sv_PulsCnt;
+
     #endif
 
     lastTime = millis();
@@ -939,7 +949,6 @@ void loop()
   #ifdef SUPPORT_JETIBOX_MENU
   HandleMenu();
   #endif
-  #endif
   jetiEx.DoJetiSend();
+  #endif
 }
-
