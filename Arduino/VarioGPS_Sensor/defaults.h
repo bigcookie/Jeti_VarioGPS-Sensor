@@ -8,24 +8,82 @@
 
 //#define UNIT_US                             //uncomment to enable US units
 
-#define V_REF                     5000        // set supply voltage from 1800 to 5500mV
 
+
+// #define CFG_FFSWIFT32
+// #define CFG_FWSWIFT38
+#define CFG_JR_ASW17
 // supported devices
-#define SUPPORT_BMx280                        // comment to disable devices
-// #define SUPPORT_MS5611_LPS
-#define SUPPORT_GPS
-// #define SUPPORT_MAIN_DRIVE
-#define SUPPORT_RX_VOLTAGE
-// #define SUPPORT_EXT_TEMP
-#define SPEEDVARIO
-#define ANALOG_R_DIVIDER_20_20
-
+#if defined(CFG_FFSWIFT32)
+  #define V_REF               5000        // set supply voltage from 1800 to 5500mV
+  #define SUPPORT_MS5611_LPS
+  #define SUPPORT_GPS
+  #define SUPPORT_RX_VOLTAGE
+  #define SPEEDVARIO
+  #define ANALOG_R_DIVIDER_20_20
+#elif defined(CFG_FWSWIFT38)
+  #define V_REF               5000        // set supply voltage from 1800 to 5500mV
+  #define SUPPORT_MS5611_LPS
+  #define SUPPORT_GPS
+   #define SPEEDVARIO
+  #define SERVOSIGNAL
+  #define SUPPORT_MPXV7002_MPXV5004
+  #define SUPPORT_TEC
+#elif defined(CFG_JR_ASW17)
+  #define V_REF               5000        // set supply voltage from 1800 to 5500mV
+  #define SUPPORT_MS5611_LPS
+  #define SUPPORT_GPS
+  #define SPEEDVARIO
+  #define SUPPORT_MPXV7002_MPXV5004
+  #define SUPPORT_TEC
+#elif defined(CFG_AIRSPEEDTEST)
+  #define V_REF               5000        // set supply voltage from 1800 to 5500mV
+  #define SUPPORT_BMx280
+  #define SUPPORT_MPXV7002_MPXV5004
+  #define SUPPORT_TEC
+  // #define SUPPORT_GPS
+  // #define SUPPORT_MAIN_DRIVE
+  // #define SUPPORT_RX_VOLTAGE
+  // #define SUPPORT_EXT_TEMP
+  #define SPEEDVARIO
+  // #define ANALOG_R_DIVIDER_20_20
+#else
+  #define V_REF               5000        // set supply voltage from 1800 to 5500mV
+  #define SUPPORT_BMx280                        // comment to disable devices
+  #define SUPPORT_GPS
+  // #define SUPPORT_MAIN_DRIVE
+  // #define SUPPORT_RX_VOLTAGE
+  // #define SUPPORT_EXT_TEMP
+  #define SPEEDVARIO
+  // #define ANALOG_R_DIVIDER_20_20
+#endif
 // support JetiBox Menu
 #define SUPPORT_JETIBOX_MENU
 
 // **************************************
 
 
+// EEprom parameter addresses
+enum
+{
+  P_GPS_MODE =              1,
+  P_GPS_3D =                2,
+  P_CURRENT_SENSOR =        3,
+  P_CURRENT_CALIBRATION =   4,
+  P_CAPACITY_MODE =         5,
+  P_ENABLE_RX1 =            6,
+  P_ENABLE_RX2 =            7,
+  P_ENABLE_TEMP =           8,
+  P_VARIO_SMOOTHING =      10,
+  P_VARIO_DEADZONE =       12,
+  P_SPEEDVARIO_NORMALSPEED =      13,
+  P_SPEEDVARIO_SPREADSPEED =      14,
+  P_SPEEDVARIO_MODE =      15,
+  P_AIRSPEED_SENSOR =      16,
+  P_TEC_MODE =             17,
+  P_CAPACITY_VALUE =       20,
+  P_VOLTAGE_VALUE =        P_CAPACITY_VALUE+sizeof(float)
+};
 
 // Sensor IDs
 enum
@@ -61,7 +119,9 @@ enum
   ID_POWER,
   ID_RX1_VOLTAGE,
   ID_RX2_VOLTAGE,
-  ID_EXT_TEMP
+  ID_EXT_TEMP,
+  ID_AIRSPEED,
+  ID_SAWTOOTH
 };
 
 /*
@@ -96,7 +156,7 @@ JETISENSOR_CONST sensors[] PROGMEM =
   { ID_SV_SIGNAL_FRQ,    "Signal Freq",      "Hz",  JetiSensor::TYPE_14b, 0 },
   { ID_SV_SIGNAL_FRQ_RETARDED,    "SigFreqRet",      "Hz",  JetiSensor::TYPE_14b, 0 },
   { ID_SV_CTRL,     "SV Control",      "%",     JetiSensor::TYPE_14b, 0 },
-  { ID_GPSVARIO,     "GPS Vario",      "m/s",     JetiSensor::TYPE_22b, 2 },
+  { ID_GPSVARIO,    "GPS Vario",      "m/s",     JetiSensor::TYPE_22b, 2 },
 #endif
   { ID_DIST,        "Distance",   "m",          JetiSensor::TYPE_22b, 0 },
   { ID_TRIP,        "Trip",       "km",         JetiSensor::TYPE_22b, 2 },
@@ -114,10 +174,20 @@ JETISENSOR_CONST sensors[] PROGMEM =
   { ID_RX1_VOLTAGE, "Rx1 Voltage","V",          JetiSensor::TYPE_14b, 2 },
   { ID_RX2_VOLTAGE, "Rx2 Voltage","V",          JetiSensor::TYPE_14b, 2 },
   { ID_EXT_TEMP,    "Ext. Temp",  "\xB0\x43",   JetiSensor::TYPE_14b, 1 },
+  { ID_AIRSPEED,    "Airspeed",   "km/h",       JetiSensor::TYPE_14b, 0 },
+  { ID_SAWTOOTH,    "Sawtooth",   " ",           JetiSensor::TYPE_14b, 0 },
   { 0 }
 };
 #endif
 
+// TEC mode
+enum {
+  TEC_disabled,
+  TEC_airSpeed,
+  TEC_GPS
+};
+
+#define PRESSURE_SEALEVEL         101325   // Pa
 
 // Sensor names and unit[US]
 #ifdef UNIT_US
@@ -181,6 +251,19 @@ enum {
 #define LPS_SMOOTHING 0.80
 #define LPS_DEADZONE 0
 
+// **** Air speed settings ****
+
+#define AIRSPEED_PIN              A7
+#define AIRSPEED_SMOOTHING        0.80
+
+#define UNIVERSAL_GAS_CONSTANT    8.3144621f
+#define DRY_AIR_MOLAR_MASS        0.0289644f
+
+// Air speed sensors
+enum {
+  airSpeed_disabled,
+  MPXV7002_MPXV5004
+};
 // **** GPS settings ****
 
 #define GPSBaud 9600
@@ -380,3 +463,7 @@ const uint8_t mVperAmp[] =  {
 #define DEFAULT_ENABLE_Rx2        false
 
 #define DEFAULT_ENABLE_EXT_TEMP   false
+
+#define DEFAULT_AIRSPEED_SENSOR   airSpeed_disabled
+#define DEFAULT_TEC_MODE          TEC_disabled
+
