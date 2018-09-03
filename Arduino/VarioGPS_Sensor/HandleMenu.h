@@ -17,7 +17,11 @@ enum screenViews {
   setVarioSmoothingValue,
   setDeadzone,
   #ifdef SUPPORT_MPXV7002_MPXV5004
-  setAirSpeedSensor,
+  setAirSpeedSensorState,
+  #ifdef SUPPORT_AIRSPEED_JETIBOX
+  setAirSpeedTubeCorrection,
+  setAirSpeedSmoothing,
+  #endif
   #endif
   #ifdef SUPPORT_TEC
   setTECmode,
@@ -55,7 +59,11 @@ const char menuText[][17] PROGMEM=
   {"Vario smoothing"},
   {"Vario deadzone:"},
   #ifdef SUPPORT_MPXV7002_MPXV5004
-  {"Air speed:"},
+  {"AirSpeedState:"},
+  #ifdef SUPPORT_AIRSPEED_JETIBOX
+  {"AirSpTubeCorr:"},
+  {"AirSpSmoothing:"},
+  #endif
   #endif
   #ifdef SUPPORT_TEC
   {"TEC mode:"},
@@ -84,12 +92,12 @@ const char menuText[][17] PROGMEM=
 const char aboutScreenText[17] PROGMEM= {VARIOGPS_VERSION};
 
 #ifdef SPEEDVARIO
-const char setSpeedVarioModeText[][12] PROGMEM=
+const char setSpeedVarioModeText[][16] PROGMEM=
 {
   {" Base Vario"},
   {" Speed"},
-  {" TEC-Vario"},
-  {" RC-Control"}
+  {" TEC-Vario AirS"},
+  {" TEC-Vario GPS"},
 };
 #endif
 
@@ -224,16 +232,28 @@ void HandleMenu()
         }
         break;
       #ifdef SUPPORT_MPXV7002_MPXV5004
-      case setAirSpeedSensor:
-        if(airSpeedSensor > airSpeed_disabled){
-          airSpeedSensor--;
+      case setAirSpeedSensorState:
+        if(airSpeedSensor.state > airSpeed_disabled){
+          airSpeedSensor.state--;
+        }
+        break;
+      #ifdef SUPPORT_AIRSPEED_JETIBOX
+      case setAirSpeedTubeCorrection:
+        if(airSpeedSensor.tubeCorrection < 2.5){
+          airSpeedSensor.tubeCorrection += .01;
+        }
+        break;
+      case setAirSpeedSmoothing:
+        if (airSpeedSensor.smoothingValue < 1.0) {
+          airSpeedSensor.smoothingValue += .01;
         }
         break;
       #endif
+      #endif
       #ifdef SUPPORT_TEC
       case setTECmode:
-        if(TECmode > TEC_disabled){
-          TECmode--;
+        if(airSpeedSensor.TECmode > TEC_disabled){
+          airSpeedSensor.TECmode--;
         }
         //if(TECmode == TEC_airSpeed && airSpeedSensor == airSpeed_disabled)goto startHandleMenu;
         //if(TECmode == TEC_GPS && gpsSettings.mode == GPS_disabled)TECmode = TEC_disabled;
@@ -303,16 +323,27 @@ void HandleMenu()
         }
         break;
       #ifdef SUPPORT_MPXV7002_MPXV5004
-      case setAirSpeedSensor:
-        if(airSpeedSensor < MPXV7002_MPXV5004){
-          airSpeedSensor++;
+      case setAirSpeedSensorState:
+        if(airSpeedSensor.state < MPXV7002_MPXV5004){
+          airSpeedSensor.state++;
+        }
+      #ifdef SUPPORT_AIRSPEED_JETIBOX
+      case setAirSpeedTubeCorrection:
+        if(airSpeedSensor.tubeCorrection > 0.0){
+          airSpeedSensor.tubeCorrection -= .01;
+        }
+        break;
+      case setAirSpeedSmoothing:
+        if(airSpeedSensor.smoothingValue > 0.0){
+          airSpeedSensor.smoothingValue -= .01;
         }
         break;
       #endif
+      #endif
       #ifdef SUPPORT_TEC
       case setTECmode:
-        if(TECmode < TEC_GPS){
-          TECmode++;
+        if(airSpeedSensor.TECmode < TEC_GPS){
+          airSpeedSensor.TECmode++;
         }
         //if(TECmode == TEC_airSpeed && airSpeedSensor == airSpeed_disabled)goto startHandleMenu;
         //if(TECmode == TEC_GPS && gpsSettings.mode == GPS_disabled)TECmode = TEC_disabled;
@@ -332,7 +363,7 @@ void HandleMenu()
       #endif
       #ifdef SPEEDVARIO
       case setSpeedVarioMode:
-        if(speedVarioPreset.mode < SV_RC_CONTROL){
+        if(speedVarioPreset.mode < SV_TEC_VARIO_GPS){
           speedVarioPreset.mode++;
         }
       case setNormalSpeed:
@@ -383,11 +414,15 @@ void HandleMenu()
         EEPROM.write(P_VARIO_DEADZONE,pressureSensor.deadzone);
 
         #ifdef SUPPORT_MPXV7002_MPXV5004
-        EEPROM.write(P_AIRSPEED_SENSOR,airSpeedSensor);
+        EEPROM.write(P_AIRSPEED_SENSOR,airSpeedSensor.state);
+        #ifdef SUPPORT_AIRSPEED_JETIBOX
+        EEPROM.write(P_AIRSPEED_TUBE_CORR,int(airSpeedSensor.tubeCorrection*100));
+        EEPROM.write(P_AIRSPEED_SMOOTHING,int(airSpeedSensor.smoothingValue*100));
+        #endif
         #endif
 
         #ifdef SUPPORT_TEC
-        EEPROM.write(P_TEC_MODE,TECmode);
+        EEPROM.write(P_TEC_MODE,airSpeedSensor.TECmode);
         #endif
 
         #ifdef SPEEDVARIO
@@ -397,7 +432,7 @@ void HandleMenu()
         #endif
         restartCPU();
       case defaultSettings:
-        for(int i=0; i < 50; i++){
+        for(int i=0; i < 255; i++){
           EEPROM.write(i, 0xFF);
         }
         EEPROM.put(EEPROM_ADRESS_CAPACITY, 0.0f);
@@ -443,9 +478,18 @@ void HandleMenu()
       sprintf( _bufferLine2, " %2dcm",pressureSensor.deadzone);
       break;
     #ifdef SUPPORT_MPXV7002_MPXV5004
-    case setAirSpeedSensor:
-      memcpy_P( _bufferLine2, &enableText[airSpeedSensor], 16 );
+    case setAirSpeedSensorState:
+      memcpy_P( _bufferLine2, &enableText[airSpeedSensor.state], 16 );
       break;
+    #ifdef SUPPORT_AIRSPEED_JETIBOX
+    case setAirSpeedSmoothing:
+      sprintf( _bufferLine2, " %2d%%",int(airSpeedSensor.smoothingValue*100));
+      break;
+    case setAirSpeedTubeCorrection:
+      sprintf(_bufferLine2, "%03d", int(airSpeedSensor.tubeCorrection*100));
+      sprintf(_bufferLine2, "%c\.%c%c", _bufferLine2[0], _bufferLine2[1], _bufferLine2[2]);
+      break;
+    #endif
     #endif
     #ifdef SUPPORT_TEC
     case setTECmode:
@@ -455,7 +499,7 @@ void HandleMenu()
       if(TECmode > TEC_GPS){
         TECmode = TEC_disabled;
       }*/
-      memcpy_P( _bufferLine2, &setTECmodeText[TECmode], 16 );
+      memcpy_P( _bufferLine2, &setTECmodeText[airSpeedSensor.TECmode], 16 );
       break;
     #endif
     #ifdef SUPPORT_MAIN_DRIVE
@@ -502,5 +546,3 @@ void HandleMenu()
 
   _bSetDisplay = false;
 }
-
-

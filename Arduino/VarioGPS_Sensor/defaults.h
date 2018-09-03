@@ -8,27 +8,33 @@
 
 //#define UNIT_US                             //uncomment to enable US units
 
+#define DEFAULT_PITOT_TUBE_CORRECTION 1.00f
+#define DEFAULT_SM_TUBE_CORRECTION 1.25f
+#define DEFAULT_TUBE_CORRECTION DEFAULT_SM_TUBE_CORRECTION
 
-
+// #define CFG_DEFAULT
+//#define TEST_HARDWARE
+// #define CFG_AIRSPEEDTEST
 // #define CFG_FFSWIFT32
-// #define CFG_FWSWIFT38
-#define CFG_JR_ASW17
+#define CFG_FWSWIFT38
 // supported devices
 #if defined(CFG_FFSWIFT32)
-  #define V_REF               5000        // set supply voltage from 1800 to 5500mV
+  #define V_REF              5000        // set supply voltage from 1800 to 5500mV
   #define SUPPORT_MS5611_LPS
   #define SUPPORT_GPS
   #define SUPPORT_RX_VOLTAGE
   #define SPEEDVARIO
   #define ANALOG_R_DIVIDER_20_20
 #elif defined(CFG_FWSWIFT38)
-  #define V_REF               5000        // set supply voltage from 1800 to 5500mV
+  #define V_REF              5000        // set supply voltage from 1800 to 5500mV
   #define SUPPORT_MS5611_LPS
   #define SUPPORT_GPS
-   #define SPEEDVARIO
+  #define SPEEDVARIO
   #define SERVOSIGNAL
   #define SUPPORT_MPXV7002_MPXV5004
+  #define SUPPORT_AIRSPEED_JETIBOX
   #define SUPPORT_TEC
+  // #define SAW_TOOTH
 #elif defined(CFG_JR_ASW17)
   #define V_REF               5000        // set supply voltage from 1800 to 5500mV
   #define SUPPORT_MS5611_LPS
@@ -36,19 +42,8 @@
   #define SPEEDVARIO
   #define SUPPORT_MPXV7002_MPXV5004
   #define SUPPORT_TEC
-#elif defined(CFG_AIRSPEEDTEST)
-  #define V_REF               5000        // set supply voltage from 1800 to 5500mV
-  #define SUPPORT_BMx280
-  #define SUPPORT_MPXV7002_MPXV5004
-  #define SUPPORT_TEC
-  // #define SUPPORT_GPS
-  // #define SUPPORT_MAIN_DRIVE
-  // #define SUPPORT_RX_VOLTAGE
-  // #define SUPPORT_EXT_TEMP
-  #define SPEEDVARIO
-  // #define ANALOG_R_DIVIDER_20_20
 #else
-  #define V_REF               5000        // set supply voltage from 1800 to 5500mV
+  #define V_REF              5000        // set supply voltage from 1800 to 5500mV
   #define SUPPORT_BMx280                        // comment to disable devices
   #define SUPPORT_GPS
   // #define SUPPORT_MAIN_DRIVE
@@ -57,6 +52,7 @@
   #define SPEEDVARIO
   // #define ANALOG_R_DIVIDER_20_20
 #endif
+
 // support JetiBox Menu
 #define SUPPORT_JETIBOX_MENU
 
@@ -81,6 +77,8 @@ enum
   P_SPEEDVARIO_MODE =      15,
   P_AIRSPEED_SENSOR =      16,
   P_TEC_MODE =             17,
+  P_AIRSPEED_SMOOTHING =   18,
+  P_AIRSPEED_TUBE_CORR =   19,
   P_CAPACITY_VALUE =       20,
   P_VOLTAGE_VALUE =        P_CAPACITY_VALUE+sizeof(float)
 };
@@ -94,14 +92,15 @@ enum
   ID_ALTREL,
   ID_ALTABS,
   ID_VARIO,
-#ifdef SPEEDVARIO
+  ID_GPSVARIO,
+#if defined(SPEEDVARIO) || defined(SERVOSIGNAL)
   ID_SV_VARIO,
   ID_SV_SIG_LOSS_CNT,
   ID_SV_SIGNAL_DURATION_MAX,
+#ifdef SIGNAL_FREQ
   ID_SV_SIGNAL_FRQ,
   ID_SV_SIGNAL_FRQ_RETARDED,
-  ID_SV_CTRL,
-  ID_GPSVARIO,
+#endif
   ID_SV_SIGNAL_DURATION,
 #endif
   ID_DIST,
@@ -148,15 +147,16 @@ JETISENSOR_CONST sensors[] PROGMEM =
   { ID_ALTREL,      "Rel. Altit", "m",          JetiSensor::TYPE_22b, 1 },
   { ID_ALTABS,      "Altitude",   "m",          JetiSensor::TYPE_22b, 0 },
   { ID_VARIO,       "Vario",      "m/s",        JetiSensor::TYPE_22b, 2 },
+  { ID_GPSVARIO,    "GPS Vario",      "m/s",     JetiSensor::TYPE_22b, 2 },
 #ifdef SPEEDVARIO
   { ID_SV_VARIO,    "SpeedVario",      "m/s",   JetiSensor::TYPE_22b, 2 },
-  { ID_SV_SIG_LOSS_CNT,         "SigLossCnt", " ",  JetiSensor::TYPE_14b, 0 },
+  { ID_SV_SIG_LOSS_CNT,         "SigLossCnt", "#",  JetiSensor::TYPE_14b, 0 },
   { ID_SV_SIGNAL_DURATION_MAX,  "SigDuraMax","ms", JetiSensor::TYPE_22b, 0 },
   { ID_SV_SIGNAL_DURATION,  "SigDura","ms", JetiSensor::TYPE_22b, 0 },
+#ifdef SIGNAL_FREQ
   { ID_SV_SIGNAL_FRQ,    "Signal Freq",      "Hz",  JetiSensor::TYPE_14b, 0 },
   { ID_SV_SIGNAL_FRQ_RETARDED,    "SigFreqRet",      "Hz",  JetiSensor::TYPE_14b, 0 },
-  { ID_SV_CTRL,     "SV Control",      "%",     JetiSensor::TYPE_14b, 0 },
-  { ID_GPSVARIO,    "GPS Vario",      "m/s",     JetiSensor::TYPE_22b, 2 },
+#endif
 #endif
   { ID_DIST,        "Distance",   "m",          JetiSensor::TYPE_22b, 0 },
   { ID_TRIP,        "Trip",       "km",         JetiSensor::TYPE_22b, 2 },
@@ -175,7 +175,7 @@ JETISENSOR_CONST sensors[] PROGMEM =
   { ID_RX2_VOLTAGE, "Rx2 Voltage","V",          JetiSensor::TYPE_14b, 2 },
   { ID_EXT_TEMP,    "Ext. Temp",  "\xB0\x43",   JetiSensor::TYPE_14b, 1 },
   { ID_AIRSPEED,    "Airspeed",   "km/h",       JetiSensor::TYPE_14b, 0 },
-  { ID_SAWTOOTH,    "Sawtooth",   " ",           JetiSensor::TYPE_14b, 0 },
+  { ID_SAWTOOTH,    "Sawtooth",   "#",          JetiSensor::TYPE_14b, 0 },
   { 0 }
 };
 #endif
@@ -254,7 +254,7 @@ enum {
 // **** Air speed settings ****
 
 #define AIRSPEED_PIN              A7
-#define AIRSPEED_SMOOTHING        0.80
+#define DEFAULT_AIRSPEED_SMOOTHING        0.65
 
 #define UNIVERSAL_GAS_CONSTANT    8.3144621f
 #define DRY_AIR_MOLAR_MASS        0.0289644f
@@ -282,9 +282,8 @@ enum {
 // SV mode
 enum {
   SV_BASIC_VARIO,
-  SV_SPEED_VARIO,
-  SV_TEC_VARIO,
-  SV_RC_CONTROL
+  SV_TEC_VARIO_AIRSPEED,
+  SV_TEC_VARIO_GPS
 };
 #endif
 
@@ -466,4 +465,3 @@ const uint8_t mVperAmp[] =  {
 
 #define DEFAULT_AIRSPEED_SENSOR   airSpeed_disabled
 #define DEFAULT_TEC_MODE          TEC_disabled
-
