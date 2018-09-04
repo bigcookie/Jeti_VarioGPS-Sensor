@@ -37,11 +37,6 @@ enum screenViews {
   #ifdef SUPPORT_EXT_TEMP
   enableExternTemp,
   #endif
-  #ifdef SPEEDVARIO
-  setSpeedVarioMode,
-  setNormalSpeed,
-  setSpeedSpread,
-  #endif
   saveSettings,
   defaultSettings
 };
@@ -79,27 +74,12 @@ const char menuText[][17] PROGMEM=
   #ifdef SUPPORT_EXT_TEMP
   {"Ext. Temp:"},
   #endif
-  #ifdef SPEEDVARIO
-  {"SpeedVario mode:"},
-  {"Normal Speed :"},
-  {"Speed Spread F:"},
-  #endif
   {"Save and restart"},
   {"Load defaults"},
 
 };
 
 const char aboutScreenText[17] PROGMEM= {VARIOGPS_VERSION};
-
-#ifdef SPEEDVARIO
-const char setSpeedVarioModeText[][16] PROGMEM=
-{
-  {" Base Vario"},
-  {" Speed"},
-  {" TEC-Vario AirS"},
-  {" TEC-Vario GPS"},
-};
-#endif
 
 const char setGpsModeText[][10] PROGMEM=
 {
@@ -271,23 +251,6 @@ void HandleMenu()
         }
         break;
       #endif
-      #ifdef SPEEDVARIO
-      case setSpeedVarioMode:
-        if(speedVarioPreset.mode > SV_BASIC_VARIO){
-          speedVarioPreset.mode--;
-        }
-        break;
-      case setNormalSpeed:
-        if (speedVarioPreset.normalSpeed < 3000) {
-          speedVarioPreset.normalSpeed += 100;
-        }
-        break;
-      case setSpeedSpread:
-        if (speedVarioPreset.speedSpread < 3.0) {
-          speedVarioPreset.speedSpread += .1;
-        }
-        break;
-      #endif
     }
 
     _bSetDisplay = true;
@@ -361,22 +324,6 @@ void HandleMenu()
         }
         break;
       #endif
-      #ifdef SPEEDVARIO
-      case setSpeedVarioMode:
-        if(speedVarioPreset.mode < SV_TEC_VARIO_GPS){
-          speedVarioPreset.mode++;
-        }
-      case setNormalSpeed:
-        if (speedVarioPreset.normalSpeed > 0) {
-          speedVarioPreset.normalSpeed -= 100;
-        }
-        break;
-      case setSpeedSpread:
-        if (speedVarioPreset.speedSpread > 0.0) {
-          speedVarioPreset.speedSpread -= .1;
-        }
-        break;
-      #endif
       #ifdef SUPPORT_RX_VOLTAGE
       case enableRx1Voltage:
         enableRx1 = !enableRx1;
@@ -425,11 +372,6 @@ void HandleMenu()
         EEPROM.write(P_TEC_MODE,airSpeedSensor.TECmode);
         #endif
 
-        #ifdef SPEEDVARIO
-        EEPROM.write(P_SPEEDVARIO_NORMALSPEED,int(speedVarioPreset.normalSpeed/100));
-        EEPROM.write(P_SPEEDVARIO_SPREADSPEED,int(speedVarioPreset.speedSpread*100));
-        EEPROM.write(P_SPEEDVARIO_MODE,speedVarioPreset.mode);
-        #endif
         restartCPU();
       case defaultSettings:
         for(int i=0; i < 255; i++){
@@ -509,21 +451,6 @@ void HandleMenu()
     case setCapacityMode:
       if(currentSensor == mainDrive_disabled)goto startHandleMenu;
       memcpy_P( _bufferLine2, &setCapacityModeText[capacityMode], 16 );
-      break;
-    #endif
-    #ifdef SPEEDVARIO
-    case setSpeedVarioMode:
-      memcpy_P( _bufferLine2, &setSpeedVarioModeText[speedVarioPreset.mode], 16 );
-      break;
-    case setNormalSpeed:
-      if(pressureSensor.type == unknown)goto startHandleMenu;
-      sprintf( _bufferLine2, " %2dm/s",int(speedVarioPreset.normalSpeed/100));
-      break;
-    case setSpeedSpread:
-      if(pressureSensor.type == unknown)goto startHandleMenu;
-      // oh mann, was man zum Speicher sparen nicht alles treibt ;-))
-      sprintf(_bufferLine2, "%03d", int(speedVarioPreset.speedSpread*100));
-      sprintf(_bufferLine2, "%c.%c%c", _bufferLine2[0], _bufferLine2[1], _bufferLine2[2]);
       break;
     #endif
     #ifdef SUPPORT_RX_VOLTAGE

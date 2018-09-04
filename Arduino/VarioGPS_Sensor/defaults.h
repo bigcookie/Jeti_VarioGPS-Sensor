@@ -72,9 +72,6 @@ enum
   P_ENABLE_TEMP =           8,
   P_VARIO_SMOOTHING =      10,
   P_VARIO_DEADZONE =       12,
-  P_SPEEDVARIO_NORMALSPEED =      13,
-  P_SPEEDVARIO_SPREADSPEED =      14,
-  P_SPEEDVARIO_MODE =      15,
   P_AIRSPEED_SENSOR =      16,
   P_TEC_MODE =             17,
   P_AIRSPEED_SMOOTHING =   18,
@@ -92,9 +89,8 @@ enum
   ID_ALTREL,
   ID_ALTABS,
   ID_VARIO,
-  ID_GPSVARIO,
 #if defined(SPEEDVARIO) || defined(SERVOSIGNAL)
-  ID_SV_VARIO,
+  ID_TEC_VARIO,
   ID_SV_SIG_LOSS_CNT,
   ID_SV_SIGNAL_DURATION_MAX,
 #ifdef SIGNAL_FREQ
@@ -120,7 +116,10 @@ enum
   ID_RX2_VOLTAGE,
   ID_EXT_TEMP,
   ID_AIRSPEED,
-  ID_SAWTOOTH
+#ifdef SAW_TOOTH
+  ID_SAWTOOTH,
+#endif
+  ID_LAST
 };
 
 /*
@@ -143,13 +142,12 @@ JETISENSOR_CONST sensors[] PROGMEM =
   // id             name          unit          data type           precision
   { ID_GPSLAT,      "Latitude",   " ",          JetiSensor::TYPE_GPS, 0 },
   { ID_GPSLON,      "Longitude",  " ",          JetiSensor::TYPE_GPS, 0 },
-  { ID_GPSSPEED,    "Speed",      "km/h",       JetiSensor::TYPE_14b, 0 },
+  { ID_GPSSPEED,    "GPS Speed",  "km/h",       JetiSensor::TYPE_14b, 0 },
   { ID_ALTREL,      "Rel. Altit", "m",          JetiSensor::TYPE_22b, 1 },
   { ID_ALTABS,      "Altitude",   "m",          JetiSensor::TYPE_22b, 0 },
   { ID_VARIO,       "Vario",      "m/s",        JetiSensor::TYPE_22b, 2 },
-  { ID_GPSVARIO,    "GPS Vario",      "m/s",     JetiSensor::TYPE_22b, 2 },
 #ifdef SPEEDVARIO
-  { ID_SV_VARIO,    "SpeedVario",      "m/s",   JetiSensor::TYPE_22b, 2 },
+  { ID_TEC_VARIO,    "TEC Vario",      "m/s",   JetiSensor::TYPE_22b, 2 },
   { ID_SV_SIG_LOSS_CNT,         "SigLossCnt", "#",  JetiSensor::TYPE_14b, 0 },
   { ID_SV_SIGNAL_DURATION_MAX,  "SigDuraMax","ms", JetiSensor::TYPE_22b, 0 },
   { ID_SV_SIGNAL_DURATION,  "SigDura","ms", JetiSensor::TYPE_22b, 0 },
@@ -174,8 +172,10 @@ JETISENSOR_CONST sensors[] PROGMEM =
   { ID_RX1_VOLTAGE, "Rx1 Voltage","V",          JetiSensor::TYPE_14b, 2 },
   { ID_RX2_VOLTAGE, "Rx2 Voltage","V",          JetiSensor::TYPE_14b, 2 },
   { ID_EXT_TEMP,    "Ext. Temp",  "\xB0\x43",   JetiSensor::TYPE_14b, 1 },
-  { ID_AIRSPEED,    "Airspeed",   "km/h",       JetiSensor::TYPE_14b, 0 },
+  { ID_AIRSPEED,    "Air Speed",   "km/h",      JetiSensor::TYPE_14b, 0 },
+#ifdef SAW_TOOTH
   { ID_SAWTOOTH,    "Sawtooth",   "#",          JetiSensor::TYPE_14b, 0 },
+#endif
   { 0 }
 };
 #endif
@@ -254,7 +254,7 @@ enum {
 // **** Air speed settings ****
 
 #define AIRSPEED_PIN              A7
-#define DEFAULT_AIRSPEED_SMOOTHING        0.65
+#define DEFAULT_AIRSPEED_SMOOTHING        0.15
 
 #define UNIVERSAL_GAS_CONSTANT    8.3144621f
 #define DRY_AIR_MOLAR_MASS        0.0289644f
@@ -276,15 +276,7 @@ enum {
 };
 
 #ifdef SPEEDVARIO
-#define SPEEDVARIO_NORMALSPEED 1200
-#define SPEEDVARIO_SPEEDSPREAD 1.0
 #define SPEEDVARIO_SIG_FREQ 50
-// SV mode
-enum {
-  SV_BASIC_VARIO,
-  SV_TEC_VARIO_AIRSPEED,
-  SV_TEC_VARIO_GPS
-};
 #endif
 
 // **** Voltage measurement settings ****

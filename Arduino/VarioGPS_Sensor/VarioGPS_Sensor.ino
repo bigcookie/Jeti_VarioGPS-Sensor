@@ -6,11 +6,12 @@
   Vario, GPS, Strom/Spannung, Empfängerspannungen, Temperaturmessung
 
 */
-#define VARIOGPS_VERSION "Vers: V3.2.3.13"
+#define VARIOGPS_VERSION "Vers: V3.2.3.14"
 /*
 
   ******************************************************************
   Versionen:
+  V3.2.3.14 04.09.18  Cleanup von Telemetrie und Jetibox Menü
   V3.2.3.13 30.08.18  AirSpeed smoothing und tube correction modifyable by JetiBox
   V3.2.3.12 25.08.18  AirSpeed / TEK Support von Nightflyer added
                       für MPXV7002/MPXV5004 Sensor an A7
@@ -192,12 +193,6 @@ struct {
 } airSpeedSensor;
 
 #if defined(SPEEDVARIO) || defined(SERVOSIGNAL)
-  struct {
-    long normalSpeed;
-    float speedSpread;
-    uint8_t mode;
-  } speedVarioPreset;
-
 
   const byte interruptPin = 2;
   volatile int sv_PulseWidth = 0;
@@ -218,8 +213,7 @@ struct {
   static int sv_SignalDuration = 0;
   static int sv_LastFreqMeasureTime = 0;
   static int sv_lastPulsCnt = 0;
-  float sv_VarioEnergyCompensationValueGPS = 0.0;
-  float sv_VarioEnergyCompensationValueAirSpeed = 0.0;
+  float sv_VarioEnergyCompensationValue = 0.0;
   float sv_SpeedinMPS = 0.0;
 #endif
 
@@ -366,9 +360,6 @@ void setup()
   #endif
   #ifdef SPEEDVARIO
   // default settings, if there are no presets
-  speedVarioPreset.normalSpeed = SPEEDVARIO_NORMALSPEED;
-  speedVarioPreset.speedSpread = SPEEDVARIO_SPEEDSPREAD;
-  speedVarioPreset.mode = SV_BASIC_VARIO;
   #ifdef SIGNAL_FREQ
     for (int i = 0 ; i < SIGNAL_FREQ_BUF_SIZE; i++) {
       sv_SignalFreqArray[i] = -1;
@@ -417,17 +408,6 @@ void setup()
   if (EEPROM.read(P_VARIO_DEADZONE) != 0xFF) {
     pressureSensor.deadzone = EEPROM.read(P_VARIO_DEADZONE);
   }
-#ifdef SPEEDVARIO
-  if (EEPROM.read(P_SPEEDVARIO_NORMALSPEED) != 0xFF) {
-    speedVarioPreset.normalSpeed = EEPROM.read(P_SPEEDVARIO_NORMALSPEED) * 100;
-  }
-  if (EEPROM.read(P_SPEEDVARIO_SPREADSPEED) != 0xFF) {
-    speedVarioPreset.speedSpread = (float)EEPROM.read(P_SPEEDVARIO_SPREADSPEED) / 100;
-  }
-  if (EEPROM.read(P_SPEEDVARIO_MODE) != 0xFF) {
-    speedVarioPreset.mode = EEPROM.read(P_SPEEDVARIO_MODE);
-  }
-#endif
 
   #ifdef SUPPORT_MPXV7002_MPXV5004
   if (EEPROM.read(P_AIRSPEED_SENSOR) != 0xFF) {
@@ -465,7 +445,7 @@ void setup()
   if (pressureSensor.type == unknown) {
     jetiEx.SetSensorActive( ID_VARIO, false, sensors );
 #ifdef SPEEDVARIO
-    jetiEx.SetSensorActive( ID_SV_VARIO, false, sensors );
+    jetiEx.SetSensorActive( ID_TEC_VARIO, false, sensors );
 #endif
   }
 
@@ -481,7 +461,6 @@ void setup()
     jetiEx.SetSensorActive( ID_GPSLAT, false, sensors );
     jetiEx.SetSensorActive( ID_GPSLON, false, sensors );
     jetiEx.SetSensorActive( ID_GPSSPEED, false, sensors );
-    jetiEx.SetSensorActive( ID_GPSVARIO, false, sensors );
   }
 
   if (gpsSettings.mode == GPS_disabled && pressureSensor.type == unknown) {
@@ -574,9 +553,9 @@ void loop()
       if (airSpeedPressure < airSpeedSensor.refPressure) airSpeedPressure = airSpeedSensor.refPressure;
 
       float pitotpressure =
-        5000.0 * ((airSpeedPressure - airSpeedSensor.refPressure) / 1024.0f) * airSpeedSensor.tubeCorrection;   // differential pressure in Pa, 1 V/kPa, max 3920 Pa
+        5000.0 * ((airSpeedPressure - airSpeedSensor.refPressure) / 1024.0f);   // differential pressure in Pa, 1 V/kPa, max 3920 Pa
       float density = (uPressure * DRY_AIR_MOLAR_MASS) / ((uTemperature + 273.16) * UNIVERSAL_GAS_CONSTANT);
-      uAirSpeed = sqrt ((2 * pitotpressure) / density);
+      uAirSpeed = sqrt ((2 * pitotpressure) / density) * airSpeedSensor.tubeCorrection;
       // uAirSpeed = sqrt ((2 * (pitotpressure - uPressure)) / density) * airSpeedSensor.tubeCorrection;
 
       // IIR Low Pass Filter
@@ -592,7 +571,7 @@ void loop()
         if (dTmeasure != 0 && dTmeasure < 3000) { // avoid divison by zero
           // = 100 * ( sv_SpeedinMPS / 9.81 ) * dV *  1000 / dT;
           // = (sv_SpeedinMPS / 9.81 ) * 100000 * dV / dT;
-          sv_VarioEnergyCompensationValueAirSpeed = uAirSpeed * 10194 * dVairspeed / dTmeasure;
+          sv_VarioEnergyCompensationValue = uAirSpeed * 10194 * dVairspeed / dTmeasure;
         }
       }
       #endif
@@ -606,10 +585,6 @@ void loop()
       #endif
     }
     #endif // SUPPORT_MPXV7002_MPXV5004
-
-    #ifdef SPEEDVARIO
-    long value = 0;
-    #endif
 
     #if defined(SUPPORT_MS5611_LPS) || defined(SUPPORT_BMx280)
       if(pressureSensor.type != unknown) {
@@ -695,25 +670,95 @@ void loop()
         uTemperature = uTemperature * 1.8 + 320;
       #endif
       jetiEx.SetSensorValue( ID_VARIO, uVario );
+    }
+    #endif // SUPPORT MS5611 || BMx280
 
-      #ifdef SPEEDVARIO
-        if (speedVarioPreset.mode == SV_BASIC_VARIO ) {
-          // native vario value
-          value = uVario;  // in cm/s
-        } else if (speedVarioPreset.mode == SV_TEC_VARIO_AIRSPEED ) {
-          // show the total energy compensated vario value
-          if(airSpeedSensor.state){
-            value = uVario + sv_VarioEnergyCompensationValueAirSpeed;
-          } else {
-            value = uVario + sv_VarioEnergyCompensationValueGPS;
-          }
-        } else if (speedVarioPreset.mode == SV_TEC_VARIO_GPS ) {
-          // show the total energy compensated vario value
-          value = uVario + sv_VarioEnergyCompensationValueGPS;
-        }
-        jetiEx.SetSensorValue( ID_SV_VARIO, value);
+    #if defined(SUPPORT_MS5611_LPS) || defined(SUPPORT_BMx280)
+      if(pressureSensor.type != unknown) {
+        static bool setStartAltitude = false;
+        static float lastVariofilter = 0;
+        static long lastAltitude = 0;
+        long curAltitude;
+        long uPressure = 0;
+        int uTemperature;
+        long uVario = 0;
+        int uHumidity;
 
-      #endif // SPEEDVARIO
+        // Read sensormodule values
+        switch (pressureSensor.type){
+          #ifdef SUPPORT_MS5611_LPS
+          case MS5611_:
+            uPressure = ms5611.readPressure(true); // In Pascal (100 Pa = 1 hPa = 1 mbar)
+            curAltitude = ms5611.getAltitude(uPressure, 101325) * 100; // In Centimeter
+            uTemperature = ms5611.readTemperature(true) * 10; // In Celsius ( x10 for one decimal)
+            break;
+          case LPS_:
+            uPressure = lps.readPressureMillibars(); // In Pascal (100 Pa = 1 hPa = 1 mbar)
+            curAltitude = lps.pressureToAltitudeMeters(uPressure) * 100; // In Centimeter
+            uTemperature = lps.readTemperatureC() * 10; // In Celsius ( x10 for one decimal)
+            break;
+         #endif
+         #ifdef SUPPORT_BMx280
+          default:
+            uPressure = boschPressureSensor.readPressure(); // In Pascal (100 Pa = 1 hPa = 1 mbar)
+            curAltitude = boschPressureSensor.readAltitude() * 100; // In Centimeter
+            uTemperature = boschPressureSensor.readTemperature() * 10; // In Celsius ( x10 for one decimal)
+            if (pressureSensor.type == BME280) {
+              jetiEx.SetSensorValue( ID_HUMIDITY, boschPressureSensor.readHumidity() * 10 ); // In %rH
+            }
+            break;
+        #endif
+      }
+
+      if (!setStartAltitude) {
+        // Set start-altitude in sensor-start
+        setStartAltitude = true;
+        startAltitude = curAltitude;
+        lastAltitude = curAltitude;
+      } else {
+        // Altitude
+        uRelAltitude = (curAltitude - startAltitude) / 10;
+        uAbsAltitude = curAltitude / 100;
+      }
+
+      // uVario in cm/s (curAlitude and lastAltitude in cm)
+
+      uVario = (curAltitude - lastAltitude) * (1000 / float(dTmeasure));
+      lastAltitude = curAltitude;
+
+      // Vario Filter
+      // IIR Low Pass Filter
+      // y[i] := α * x[i] + (1-α) * y[i-1]
+      //      := y[i-1] + α * (x[i] - y[i-1])
+      // mit α = 1- β
+      // y[i] := (1-β) * x[i] + β * y[i-1]
+      //      := x[i] - β * x[i] + β * y[i-1]
+      //      := x[i] + β (y[i-1] - x[i])
+      // see: https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
+
+      uVario = uVario + pressureSensor.smoothingValue * (lastVariofilter - uVario);
+      lastVariofilter = uVario;
+      // Dead zone filter
+      if (uVario > pressureSensor.deadzone) {
+        uVario -= pressureSensor.deadzone;
+      } else if (uVario < (pressureSensor.deadzone * -1)) {
+        uVario -= (pressureSensor.deadzone * -1);
+      } else {
+        uVario = 0;
+      }
+
+      #ifdef UNIT_US
+        // EU to US conversions
+        // ft/s = m/s / 0.3048
+        // inHG = hPa * 0,029529983071445
+        // ft = m / 0.3048
+        uVario /= 0.3048;
+        uPressure *= 0.029529983071445;
+        uTemperature = uTemperature * 1.8 + 320;
+      #endif
+      jetiEx.SetSensorValue( ID_VARIO, uVario );
+      jetiEx.SetSensorValue( ID_TEC_VARIO, uVario + sv_VarioEnergyCompensationValue);
+
       jetiEx.SetSensorValue( ID_PRESSURE, uPressure );
       jetiEx.SetSensorValue( ID_TEMPERATURE, uTemperature );
 
@@ -896,12 +941,12 @@ void loop()
       int gpsAltitudeDiff = uAbsAltitude - lastGPSAltitude;
       int gpsTimeDiff = lastGPSAltitudeTime - millis();
       int gpsVarioValue = (gpsAltitudeDiff * 10) / gpsTimeDiff;
-      jetiEx.SetSensorValue( ID_GPSVARIO, gpsVarioValue );
+      // jetiEx.SetSensorValue( ID_GPSVARIO, gpsVarioValue );
 
       lastGPSAltitudeTime = millis();
 
 
-      if (gps.speed.isUpdated()) {
+      if (gps.speed.isUpdated() && airSpeedSensor.TECmode == TEC_GPS) {
 #ifdef SPEEDVARIO
         static uint32_t timeSpeedActinMS, timeSpeedLastinMS;
         static double lastSpeedinMPS = 0.0;
@@ -917,24 +962,8 @@ void loop()
         if (dT != 0 && dT < 3000) { // avoid divison by zero
           // = 100 * ( sv_SpeedinMPS / 9.81 ) * dV *  1000 / dT;
           // = (sv_SpeedinMPS / 9.81 ) * 100000 * dV / dT;
-          sv_VarioEnergyCompensationValueGPS = sv_SpeedinMPS  * 10194 * dV / dT;
+          sv_VarioEnergyCompensationValue = sv_SpeedinMPS  * 10194 * dV / dT;
         }
-#ifdef JETI_EX_SERIAL_OUT
-        Serial.print("  === SV: ");
-        Serial.print(millis());
-        Serial.print(" : speed = ");
-        Serial.print(sv_SpeedinMPS);
-        Serial.print("m/s dV = ");
-        Serial.print(dV);
-        Serial.print("m/s dT = ");
-        Serial.print(dT);
-        Serial.print("ms comp = ");
-        Serial.print(sv_VarioEnergyCompensationValueGPS / 100);
-        Serial.print("m/s comp = ");
-        Serial.print(sv_VarioEnergyCompensationValueGPS);
-        Serial.print("cm/s");
-        Serial.println();
-#endif
         lastSpeedinMPS = sv_SpeedinMPS;
         timeSpeedLastinMS = timeSpeedActinMS;
 #endif
@@ -998,7 +1027,9 @@ void loop()
 
     } else { // If Fix end
       #ifdef SPEEDVARIO
-      sv_VarioEnergyCompensationValueGPS = 0.0; // reset TEC value, in case of Fix end
+      if (airSpeedSensor.TECmode == TEC_GPS) {
+        sv_VarioEnergyCompensationValue = 0.0; // reset TEC value, in case of Fix end
+      }
       #endif
       jetiEx.SetSensorValueGPS( ID_GPSLAT, false, 0 );
       jetiEx.SetSensorValueGPS( ID_GPSLON, true, 0 );
