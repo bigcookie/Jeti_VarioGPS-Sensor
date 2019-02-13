@@ -8,15 +8,20 @@
 
 //#define UNIT_US                             //uncomment to enable US units
 
+// #define JETI_DEV_ID_LOW 0x76
+// #define JETI_DEV_ID_HIGH 0x32
 #define DEFAULT_PITOT_TUBE_CORRECTION 1.00f
 #define DEFAULT_SM_TUBE_CORRECTION 1.25f
 #define DEFAULT_TUBE_CORRECTION DEFAULT_SM_TUBE_CORRECTION
-
 // #define CFG_DEFAULT
 //#define TEST_HARDWARE
 // #define CFG_AIRSPEEDTEST
 // #define CFG_FFSWIFT32
-#define CFG_FWSWIFT38
+// #define CFG_FWSWIFT38
+// #define CFG_RADICAL
+// #define CFG_CFSB14_60
+#define CFG_FF_MACKA35
+// #define CFG_PRESSURE_SENSOR_TEST
 // supported devices
 #if defined(CFG_FFSWIFT32)
   #define V_REF              5000        // set supply voltage from 1800 to 5500mV
@@ -25,6 +30,32 @@
   #define SUPPORT_RX_VOLTAGE
   #define SPEEDVARIO
   #define ANALOG_R_DIVIDER_20_20
+  #elif defined(CFG_PRESSURE_SENSOR_TEST)
+  #define V_REF              5000        // set supply voltage from 1800 to 5500mV
+  #define SUPPORT_MS5611_LPS
+#elif defined(CFG_FF_MACKA35)
+  #define V_REF              5000        // set supply voltage from 1800 to 5500mV
+  #define SUPPORT_MS5611_LPS
+  #define SUPPORT_GPS
+  #define SERVOSIGNAL
+  #define SERVO_SIGNAL_PIN 3
+#elif defined(CFG_RADICAL)
+  #define V_REF              3300        // set supply voltage from 1800 to 5500mV
+  #define SUPPORT_MS5611_LPS
+#elif defined(CFG_CFSB14_60)
+  #define V_REF              5000        // set supply voltage from 1800 to 5500mV
+  #define JETI_DEV_ID_LOW 0x76           // to support SpeedVario parallel to the MEZON speed controller
+  #define JETI_DEV_ID_HIGH 0x33
+  #define SUPPORT_MS5611_LPS
+  #define SUPPORT_GPS
+  #define SPEEDVARIO
+  #define SERVOSIGNAL
+  #define SUPPORT_MPXV7002_MPXV5004
+  #define SUPPORT_AIRSPEED_JETIBOX
+  #define SUPPORT_TEC
+  #define SUPPORT_RX_VOLTAGE
+  #define ANALOG_R_DIVIDER_20_20
+  // #define TEST_TELEMETRY_VALUE
 #elif defined(CFG_FWSWIFT38)
   #define V_REF              5000        // set supply voltage from 1800 to 5500mV
   #define SUPPORT_MS5611_LPS
@@ -90,14 +121,16 @@ enum
   ID_ALTABS,
   ID_VARIO,
 #if defined(SPEEDVARIO) || defined(SERVOSIGNAL)
+#ifdef SUPPORT_TEC
   ID_TEC_VARIO,
+#endif
   ID_SV_SIG_LOSS_CNT,
+  ID_SV_SIGNAL_DURATION,
   ID_SV_SIGNAL_DURATION_MAX,
 #ifdef SIGNAL_FREQ
   ID_SV_SIGNAL_FRQ,
   ID_SV_SIGNAL_FRQ_RETARDED,
 #endif
-  ID_SV_SIGNAL_DURATION,
 #endif
   ID_DIST,
   ID_TRIP,
@@ -115,9 +148,14 @@ enum
   ID_RX1_VOLTAGE,
   ID_RX2_VOLTAGE,
   ID_EXT_TEMP,
+#ifdef SUPPORT_MPXV7002_MPXV5004
   ID_AIRSPEED,
+#endif
 #ifdef SAW_TOOTH
   ID_SAWTOOTH,
+#endif
+#ifdef TEST_TELEMETRY_VALUE
+  ID_TESTVALUE,
 #endif
   ID_LAST
 };
@@ -146,8 +184,10 @@ JETISENSOR_CONST sensors[] PROGMEM =
   { ID_ALTREL,      "Rel. Altit", "m",          JetiSensor::TYPE_22b, 1 },
   { ID_ALTABS,      "Altitude",   "m",          JetiSensor::TYPE_22b, 0 },
   { ID_VARIO,       "Vario",      "m/s",        JetiSensor::TYPE_22b, 2 },
-#ifdef SPEEDVARIO
+#if defined(SPEEDVARIO) || defined(SERVOSIGNAL)
+#ifdef SUPPORT_TEC
   { ID_TEC_VARIO,    "TEC Vario",      "m/s",   JetiSensor::TYPE_22b, 2 },
+#endif
   { ID_SV_SIG_LOSS_CNT,         "SigLossCnt", "#",  JetiSensor::TYPE_14b, 0 },
   { ID_SV_SIGNAL_DURATION_MAX,  "SigDuraMax","ms", JetiSensor::TYPE_22b, 0 },
   { ID_SV_SIGNAL_DURATION,  "SigDura","ms", JetiSensor::TYPE_22b, 0 },
@@ -172,9 +212,14 @@ JETISENSOR_CONST sensors[] PROGMEM =
   { ID_RX1_VOLTAGE, "Rx1 Voltage","V",          JetiSensor::TYPE_14b, 2 },
   { ID_RX2_VOLTAGE, "Rx2 Voltage","V",          JetiSensor::TYPE_14b, 2 },
   { ID_EXT_TEMP,    "Ext. Temp",  "\xB0\x43",   JetiSensor::TYPE_14b, 1 },
+#ifdef SUPPORT_MPXV7002_MPXV5004
   { ID_AIRSPEED,    "Air Speed",   "km/h",      JetiSensor::TYPE_14b, 0 },
+#endif
 #ifdef SAW_TOOTH
   { ID_SAWTOOTH,    "Sawtooth",   "#",          JetiSensor::TYPE_14b, 0 },
+#endif
+#ifdef TEST_TELEMETRY_VALUE
+  { ID_TESTVALUE,    "TestVal",   "#",          JetiSensor::TYPE_14b, 0 },
 #endif
   { 0 }
 };
@@ -457,3 +502,14 @@ const uint8_t mVperAmp[] =  {
 
 #define DEFAULT_AIRSPEED_SENSOR   airSpeed_disabled
 #define DEFAULT_TEC_MODE          TEC_disabled
+
+#ifndef SERVO_SIGNAL_PIN
+#define SERVO_SIGNAL_PIN 2
+#endif
+
+#ifndef JETI_DEV_ID_LOW
+#define JETI_DEV_ID_LOW 0x76
+#endif
+#ifndef JETI_DEV_ID_HIGH
+#define JETI_DEV_ID_HIGH 0x32
+#endif

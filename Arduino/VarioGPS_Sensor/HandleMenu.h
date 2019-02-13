@@ -429,7 +429,7 @@ void HandleMenu()
       break;
     case setAirSpeedTubeCorrection:
       sprintf(_bufferLine2, "%03d", int(airSpeedSensor.tubeCorrection*100));
-      sprintf(_bufferLine2, "%c\.%c%c", _bufferLine2[0], _bufferLine2[1], _bufferLine2[2]);
+      sprintf(_bufferLine2, "%c.%c%c", _bufferLine2[0], _bufferLine2[1], _bufferLine2[2]);
       break;
     #endif
     #endif
@@ -473,3 +473,5 @@ void HandleMenu()
 
   _bSetDisplay = false;
 }
+
+

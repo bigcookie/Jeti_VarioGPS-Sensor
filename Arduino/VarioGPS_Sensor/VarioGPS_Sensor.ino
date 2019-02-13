@@ -6,11 +6,12 @@
   Vario, GPS, Strom/Spannung, Empfängerspannungen, Temperaturmessung
 
 */
-#define VARIOGPS_VERSION "Vers: V3.2.3.14"
+#define VARIOGPS_VERSION "Vers: V3.2.3.15d"
 /*
 
   ******************************************************************
   Versionen:
+  V3.2.3.15 01.11.18  enhanced handling of the MS5611 pressure sensor (beta)
   V3.2.3.14 04.09.18  Cleanup von Telemetrie und Jetibox Menü
   V3.2.3.13 30.08.18  AirSpeed smoothing und tube correction modifyable by JetiBox
   V3.2.3.12 25.08.18  AirSpeed / TEK Support von Nightflyer added
@@ -118,7 +119,7 @@
 */
 
 // uncomment this, to get debug Serial.prints instead of JetiExBus protocol for debugging
- // #define JETI_EX_SERIAL_OUT
+// #define JETI_EX_SERIAL_OUT
 
 #ifdef JETI_EX_SERIAL_OUT
 #include "JetiExTest.h"
@@ -194,7 +195,6 @@ struct {
 
 #if defined(SPEEDVARIO) || defined(SERVOSIGNAL)
 
-  const byte interruptPin = 2;
   volatile int sv_PulseWidth = 0;
   volatile int sv_PauseWidth = 0;
   volatile int sv_RisingT = 0;
@@ -208,9 +208,9 @@ struct {
   #endif
   int sv_sigPeriodSum = 0;
   int sv_PulsCnt = 0;
-  static int sv_SignalLossCnt = 0;
-  static int sv_SignalDurationMax = 0;
-  static int sv_SignalDuration = 0;
+  volatile static int sv_SignalLossCnt = 0;
+  volatile static int sv_SignalDurationMax = 0;
+  volatile static int sv_SignalDuration = 0;
   static int sv_LastFreqMeasureTime = 0;
   static int sv_lastPulsCnt = 0;
   float sv_VarioEnergyCompensationValue = 0.0;
@@ -257,8 +257,14 @@ void sv_rising() {
   sv_SignalDuration = millis() - sv_PulsStartT;
   sv_PulsStartT = millis();
   sv_RisingT = micros();
-  attachInterrupt(0, sv_falling, FALLING);
+  // attachInterrupt(0, sv_falling, FALLING);
+  attachInterrupt(digitalPinToInterrupt(SERVO_SIGNAL_PIN), sv_falling, FALLING);
   sv_PauseWidth = sv_RisingT - sv_FallingT;
+  #ifdef JETI_EX_SERIAL_OUT
+    Serial.print("servosignal rising at: ");
+    Serial.print(sv_RisingT);
+    Serial.println();
+  #endif
 }
 
 #define MAXLOOP 20
@@ -269,7 +275,8 @@ void sv_falling() {
   sv_FallingT = now;
   sv_PulseWidth = sv_FallingT - sv_RisingT;
 
-  attachInterrupt(0, sv_rising, RISING);
+  // attachInterrupt(0, sv_rising, RISING);
+  attachInterrupt(digitalPinToInterrupt(SERVO_SIGNAL_PIN), sv_rising, RISING);
 }
 
 int getRCServoPulse() {
@@ -305,15 +312,20 @@ bool checkRCServoSignal() {
 
 void setup()
 {
-#ifdef JETI_EX_SERIAL_OUT
-  Serial.begin(115200);//sets the baud rate
-  Serial.println("== SpeedVario in TEST Mode ==");
-#endif
-#ifdef SPEEDVARIO
-  // when pin D2 goes high, call the rising function
-  pinMode(interruptPin, INPUT);
-  attachInterrupt(digitalPinToInterrupt(interruptPin), sv_rising, RISING);
-#endif
+  #ifdef JETI_EX_SERIAL_OUT
+    Serial.begin(115200);//sets the baud rate
+    Serial.println("== SpeedVario in TEST Mode ==");
+  #endif
+  #if defined(SPEEDVARIO) || defined(SERVOSIGNAL)
+    // when pin D2 goes high, call the rising function
+    pinMode(SERVO_SIGNAL_PIN, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(SERVO_SIGNAL_PIN), sv_rising, RISING);
+  #ifdef JETI_EX_SERIAL_OUT
+    Serial.print("servosignal on pin: ");
+    Serial.print(SERVO_SIGNAL_PIN);
+    Serial.println();
+  #endif
+  #endif
 
   // identify sensor
   #ifdef SUPPORT_BMx280
@@ -358,7 +370,7 @@ void setup()
       break;
   }
   #endif
-  #ifdef SPEEDVARIO
+  #if defined(SPEEDVARIO) || defined(SERVOSIGNAL)
   // default settings, if there are no presets
   #ifdef SIGNAL_FREQ
     for (int i = 0 ; i < SIGNAL_FREQ_BUF_SIZE; i++) {
@@ -444,9 +456,9 @@ void setup()
   // Setup sensors
   if (pressureSensor.type == unknown) {
     jetiEx.SetSensorActive( ID_VARIO, false, sensors );
-#ifdef SPEEDVARIO
+    #ifdef SPEEDVARIO
     jetiEx.SetSensorActive( ID_TEC_VARIO, false, sensors );
-#endif
+    #endif
   }
 
   if (gpsSettings.mode == GPS_basic || pressureSensor.type != BME280) {
@@ -514,9 +526,55 @@ void setup()
   }
 
   // init Jeti EX Bus
-  jetiEx.SetDeviceId( 0x76, 0x32 );
+  jetiEx.SetDeviceId( JETI_DEV_ID_LOW, JETI_DEV_ID_HIGH );
   jetiEx.Start( "VarioGPS", sensors, JetiExProtocol::SERIAL2 );
 
+}
+
+static double ourMS5611Pressure = 0;
+static bool ourStartupPhase = true;
+
+void pollSensors() {
+  #ifdef SUPPORT_MS5611_LPS
+  // GY63 new handling
+  static unsigned long pollTimeLast = 0;
+  static bool isPollSensorsFirst = true;
+  unsigned long pollTimeNow = millis();
+  double pressure;
+  if ( ( pollTimeNow - pollTimeLast) > 25)  {
+      pressure = ms5611.readPressure(true); // In Pascal (100 Pa = 1 hPa = 1 mbar)
+      if (isPollSensorsFirst) {
+        isPollSensorsFirst = false;
+        ourMS5611Pressure = pressure;
+      }
+      // Vario Filter
+      // IIR Low Pass Filter
+      // y[i] := α * x[i] + (1-α) * y[i-1]
+      //      := α * x[i] + (1 * y[i-1]) - (α * y[i-1])
+      //      := α * x[i] +  y[i-1] - α * y[i-1]
+      //      := α * ( x[i] - y[i-1]) + y[i-1]
+      //      := y[i-1] + α * (x[i] - y[i-1])
+      // mit α = 1- β
+      //      := y[i-1] + (1-ß) * (x[i] - y[i-1])
+      //      := y[i-1] + 1 * (x[i] - y[i-1]) - ß * (x[i] - y[i-1])
+      //      := y[i-1] + x[i] - y[i-1] - ß * x[i] + ß * y[i-1]
+      //      := x[i] - ß * x[i] + ß * y[i-1]
+      //      := x[i] + ß * y[i-1] - ß * x[i]
+      //      := x[i] + ß * (y[i-1] - x[i])
+
+      // float f = 0.984;
+      float f = 0.9f + 0.1f * pressureSensor.smoothingValue;
+      ourMS5611Pressure = (double) pressure + f * (double)(ourMS5611Pressure - pressure);
+      pollTimeLast = pollTimeNow;
+        #ifdef JETI_EX_SERIAL_OUT_NO
+          Serial.print("pressure: ");
+          Serial.print(pressure);
+          Serial.print("smooth pressure: ");
+          Serial.print(ourMS5611Pressure);
+          Serial.println();
+        #endif
+    #endif
+  }
 }
 
 void loop()
@@ -530,16 +588,19 @@ void loop()
   #ifdef SUPPORT_TEC
   static unsigned long dT = 0;
   static float dV;
-  static float uSpeedMS;
   #endif
 
   #if defined(SPEEDVARIO) || defined(SERVOSIGNAL)
-  bool checkControlServo = checkRCServoSignal();
+    bool checkControlServo = checkRCServoSignal();
   #endif
 
   unsigned long dTmeasure = millis() - lastTime;     // delta time in ms
+  static int measureCnt = 0;
   if(dTmeasure > MEASURING_INTERVAL) {
-
+    #ifdef TEST_TELEMETRY_VALUE
+    jetiEx.SetSensorValue( ID_TESTVALUE, dTmeasure);
+    #endif
+    measureCnt++;
     #ifdef SUPPORT_MPXV7002_MPXV5004
     if(airSpeedSensor.state){
       static int uAirSpeed = 0;
@@ -589,7 +650,6 @@ void loop()
     #if defined(SUPPORT_MS5611_LPS) || defined(SUPPORT_BMx280)
       if(pressureSensor.type != unknown) {
         static bool setStartAltitude = false;
-        static float lastVariofilter = 0;
         static long lastAltitude = 0;
         long curAltitude;
         long uPressure = 0;
@@ -601,9 +661,10 @@ void loop()
         switch (pressureSensor.type){
           #ifdef SUPPORT_MS5611_LPS
           case MS5611_:
-            uPressure = ms5611.readPressure(true); // In Pascal (100 Pa = 1 hPa = 1 mbar)
-            curAltitude = ms5611.getAltitude(uPressure, 101325) * 100; // In Centimeter
+            // uPressure = ms5611.readPressure(true); // In Pascal (100 Pa = 1 hPa = 1 mbar)
+            curAltitude = ms5611.getAltitude(ourMS5611Pressure, 101325) * 100; // In Centimeter
             uTemperature = ms5611.readTemperature(true) * 10; // In Celsius ( x10 for one decimal)
+            uPressure = ourMS5611Pressure;
             break;
           case LPS_:
             uPressure = lps.readPressureMillibars(); // In Pascal (100 Pa = 1 hPa = 1 mbar)
@@ -623,18 +684,18 @@ void loop()
         #endif
       }
 
-      if (!setStartAltitude) {
+      if (!setStartAltitude && measureCnt > 30) {
         // Set start-altitude in sensor-start
         setStartAltitude = true;
         startAltitude = curAltitude;
         lastAltitude = curAltitude;
       } else {
-        // Altitude
+        // Altitud  e
         uRelAltitude = (curAltitude - startAltitude) / 10;
         uAbsAltitude = curAltitude / 100;
       }
 
-      // uVario in cm/s (curAlitude and lastAltitude in cm)
+      // uVario in cm/s (curAltitude and lastAltitude in cm)
 
       uVario = (curAltitude - lastAltitude) * (1000 / float(dTmeasure));
       lastAltitude = curAltitude;
@@ -642,15 +703,37 @@ void loop()
       // Vario Filter
       // IIR Low Pass Filter
       // y[i] := α * x[i] + (1-α) * y[i-1]
+      //      := α * x[i] + (1 * y[i-1]) - (α * y[i-1])
+      //      := α * x[i] +  y[i-1] - α * y[i-1]
+      //      := α * ( x[i] - y[i-1]) + y[i-1]
       //      := y[i-1] + α * (x[i] - y[i-1])
       // mit α = 1- β
-      // y[i] := (1-β) * x[i] + β * y[i-1]
-      //      := x[i] - β * x[i] + β * y[i-1]
-      //      := x[i] + β (y[i-1] - x[i])
+      //      := y[i-1] + (1-ß) * (x[i] - y[i-1])
+      //      := y[i-1] + 1 * (x[i] - y[i-1]) - ß * (x[i] - y[i-1])
+      //      := y[i-1] + x[i] - y[i-1] - ß * x[i] + ß * y[i-1]
+      //      := x[i] - ß * x[i] + ß * y[i-1]
+      //      := x[i] + ß * y[i-1] - ß * x[i]
+      //      := x[i] + ß * (y[i-1] - x[i])
       // see: https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
 
+      #ifdef SUPPORT_MS5611_LPS
+      // GY63 new handling
+       // do nothing the pressure Value is smoothed instead
+      #else
+      static float lastVariofilter = 0;
       uVario = uVario + pressureSensor.smoothingValue * (lastVariofilter - uVario);
       lastVariofilter = uVario;
+      #endif
+      #ifdef JETI_EX_SERIAL_OUT
+        Serial.print(" ourMS5611Pressure: ");
+        Serial.print(ourMS5611Pressure);
+        Serial.print(" curAltitude: ");
+        Serial.print(curAltitude);
+        Serial.print(" uVario: ");
+        Serial.print(uVario);
+        Serial.println();
+      #endif
+
       // Dead zone filter
       if (uVario > pressureSensor.deadzone) {
         uVario -= pressureSensor.deadzone;
@@ -670,94 +753,9 @@ void loop()
         uTemperature = uTemperature * 1.8 + 320;
       #endif
       jetiEx.SetSensorValue( ID_VARIO, uVario );
-    }
-    #endif // SUPPORT MS5611 || BMx280
-
-    #if defined(SUPPORT_MS5611_LPS) || defined(SUPPORT_BMx280)
-      if(pressureSensor.type != unknown) {
-        static bool setStartAltitude = false;
-        static float lastVariofilter = 0;
-        static long lastAltitude = 0;
-        long curAltitude;
-        long uPressure = 0;
-        int uTemperature;
-        long uVario = 0;
-        int uHumidity;
-
-        // Read sensormodule values
-        switch (pressureSensor.type){
-          #ifdef SUPPORT_MS5611_LPS
-          case MS5611_:
-            uPressure = ms5611.readPressure(true); // In Pascal (100 Pa = 1 hPa = 1 mbar)
-            curAltitude = ms5611.getAltitude(uPressure, 101325) * 100; // In Centimeter
-            uTemperature = ms5611.readTemperature(true) * 10; // In Celsius ( x10 for one decimal)
-            break;
-          case LPS_:
-            uPressure = lps.readPressureMillibars(); // In Pascal (100 Pa = 1 hPa = 1 mbar)
-            curAltitude = lps.pressureToAltitudeMeters(uPressure) * 100; // In Centimeter
-            uTemperature = lps.readTemperatureC() * 10; // In Celsius ( x10 for one decimal)
-            break;
-         #endif
-         #ifdef SUPPORT_BMx280
-          default:
-            uPressure = boschPressureSensor.readPressure(); // In Pascal (100 Pa = 1 hPa = 1 mbar)
-            curAltitude = boschPressureSensor.readAltitude() * 100; // In Centimeter
-            uTemperature = boschPressureSensor.readTemperature() * 10; // In Celsius ( x10 for one decimal)
-            if (pressureSensor.type == BME280) {
-              jetiEx.SetSensorValue( ID_HUMIDITY, boschPressureSensor.readHumidity() * 10 ); // In %rH
-            }
-            break;
-        #endif
-      }
-
-      if (!setStartAltitude) {
-        // Set start-altitude in sensor-start
-        setStartAltitude = true;
-        startAltitude = curAltitude;
-        lastAltitude = curAltitude;
-      } else {
-        // Altitude
-        uRelAltitude = (curAltitude - startAltitude) / 10;
-        uAbsAltitude = curAltitude / 100;
-      }
-
-      // uVario in cm/s (curAlitude and lastAltitude in cm)
-
-      uVario = (curAltitude - lastAltitude) * (1000 / float(dTmeasure));
-      lastAltitude = curAltitude;
-
-      // Vario Filter
-      // IIR Low Pass Filter
-      // y[i] := α * x[i] + (1-α) * y[i-1]
-      //      := y[i-1] + α * (x[i] - y[i-1])
-      // mit α = 1- β
-      // y[i] := (1-β) * x[i] + β * y[i-1]
-      //      := x[i] - β * x[i] + β * y[i-1]
-      //      := x[i] + β (y[i-1] - x[i])
-      // see: https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
-
-      uVario = uVario + pressureSensor.smoothingValue * (lastVariofilter - uVario);
-      lastVariofilter = uVario;
-      // Dead zone filter
-      if (uVario > pressureSensor.deadzone) {
-        uVario -= pressureSensor.deadzone;
-      } else if (uVario < (pressureSensor.deadzone * -1)) {
-        uVario -= (pressureSensor.deadzone * -1);
-      } else {
-        uVario = 0;
-      }
-
-      #ifdef UNIT_US
-        // EU to US conversions
-        // ft/s = m/s / 0.3048
-        // inHG = hPa * 0,029529983071445
-        // ft = m / 0.3048
-        uVario /= 0.3048;
-        uPressure *= 0.029529983071445;
-        uTemperature = uTemperature * 1.8 + 320;
-      #endif
-      jetiEx.SetSensorValue( ID_VARIO, uVario );
+      #ifdef SPEEDVARIO
       jetiEx.SetSensorValue( ID_TEC_VARIO, uVario + sv_VarioEnergyCompensationValue);
+      #endif
 
       jetiEx.SetSensorValue( ID_PRESSURE, uPressure );
       jetiEx.SetSensorValue( ID_TEMPERATURE, uTemperature );
@@ -804,17 +802,15 @@ void loop()
         #ifdef JETI_EX_SERIAL_OUT
           Serial.print("  === SIGNAL_ANALYSIS: ");
           Serial.print(millis());
+          Serial.print(" : SIG PIN = ");
+          Serial.print(digitalRead(SERVO_SIGNAL_PIN));
           Serial.print(" : SIG_LOSS_CNT = ");
           Serial.print(sv_SignalLossCnt);
           Serial.print(" : SIGNAL_DURATION_MAX = ");
           Serial.print(sv_SignalDurationMax);
           Serial.print(" : SIGNAL_DURATION = ");
           Serial.print(sv_SignalDuration);
-          Serial.print("ms : SIGNAL_FREQ = ");
-          Serial.print(sv_SignalFreq);
-          Serial.print("Hz : SIGNAL_PERIOD = ");
-          Serial.print(1000/sv_SignalFreq);
-          Serial.print("ms ");
+          Serial.print("ms");
           Serial.println();
         #endif
     #endif // SPEEDVARIO | SERVOSIGNAL
@@ -1070,6 +1066,8 @@ void loop()
 
   jetiEx.SetSensorValue( ID_ALTREL, uRelAltitude );
   jetiEx.SetSensorValue( ID_ALTABS, uAbsAltitude );
+
+  pollSensors();
 
   #ifndef JETI_EX_SERIAL_OUT
   #ifdef SUPPORT_JETIBOX_MENU
