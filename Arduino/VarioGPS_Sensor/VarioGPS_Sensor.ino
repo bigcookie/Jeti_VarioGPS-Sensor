@@ -6,7 +6,7 @@
   Vario, GPS, Strom/Spannung, Empfängerspannungen, Temperaturmessung
 
 */
-#define VARIOGPS_VERSION "Vers: V3.2.3.15d"
+#define VARIOGPS_VERSION "Vers: V3.2.3.15e"
 /*
 
   ******************************************************************
@@ -456,7 +456,7 @@ void setup()
   // Setup sensors
   if (pressureSensor.type == unknown) {
     jetiEx.SetSensorActive( ID_VARIO, false, sensors );
-    #ifdef SPEEDVARIO
+    #ifdef SUPPORT_TEC
     jetiEx.SetSensorActive( ID_TEC_VARIO, false, sensors );
     #endif
   }
@@ -753,7 +753,7 @@ void loop()
         uTemperature = uTemperature * 1.8 + 320;
       #endif
       jetiEx.SetSensorValue( ID_VARIO, uVario );
-      #ifdef SPEEDVARIO
+      #ifdef SUPPORT_TEC
       jetiEx.SetSensorValue( ID_TEC_VARIO, uVario + sv_VarioEnergyCompensationValue);
       #endif
 

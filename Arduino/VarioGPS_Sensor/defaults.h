@@ -16,11 +16,11 @@
 // #define CFG_DEFAULT
 //#define TEST_HARDWARE
 // #define CFG_AIRSPEEDTEST
-// #define CFG_FFSWIFT32
+#define CFG_FFSWIFT32
 // #define CFG_FWSWIFT38
 // #define CFG_RADICAL
 // #define CFG_CFSB14_60
-#define CFG_FF_MACKA35
+// #define CFG_FF_MACKA35
 // #define CFG_PRESSURE_SENSOR_TEST
 // supported devices
 #if defined(CFG_FFSWIFT32)
@@ -28,7 +28,8 @@
   #define SUPPORT_MS5611_LPS
   #define SUPPORT_GPS
   #define SUPPORT_RX_VOLTAGE
-  #define SPEEDVARIO
+  #define SERVOSIGNAL
+  #define SERVO_SIGNAL_PIN 3
   #define ANALOG_R_DIVIDER_20_20
   #elif defined(CFG_PRESSURE_SENSOR_TEST)
   #define V_REF              5000        // set supply voltage from 1800 to 5500mV
