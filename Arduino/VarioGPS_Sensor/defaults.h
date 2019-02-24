@@ -29,7 +29,7 @@
   #define SUPPORT_GPS
   #define SUPPORT_RX_VOLTAGE
   #define SERVOSIGNAL
-  #define SERVO_SIGNAL_PIN 3
+  #define SERVOSIGNAL_PIN 3
   #define ANALOG_R_DIVIDER_20_20
   #elif defined(CFG_PRESSURE_SENSOR_TEST)
   #define V_REF              5000        // set supply voltage from 1800 to 5500mV
@@ -39,7 +39,8 @@
   #define SUPPORT_MS5611_LPS
   #define SUPPORT_GPS
   #define SERVOSIGNAL
-  #define SERVO_SIGNAL_PIN 3
+  #define SERVOSIGNAL_PIN_PULLUP
+  #define SERVOSIGNAL_PIN 3
 #elif defined(CFG_RADICAL)
   #define V_REF              3300        // set supply voltage from 1800 to 5500mV
   #define SUPPORT_MS5611_LPS
@@ -504,8 +505,8 @@ const uint8_t mVperAmp[] =  {
 #define DEFAULT_AIRSPEED_SENSOR   airSpeed_disabled
 #define DEFAULT_TEC_MODE          TEC_disabled
 
-#ifndef SERVO_SIGNAL_PIN
-#define SERVO_SIGNAL_PIN 2
+#ifndef SERVOSIGNAL_PIN
+#define SERVOSIGNAL_PIN 2
 #endif
 
 #ifndef JETI_DEV_ID_LOW

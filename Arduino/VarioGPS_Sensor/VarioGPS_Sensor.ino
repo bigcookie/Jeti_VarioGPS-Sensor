@@ -6,7 +6,7 @@
   Vario, GPS, Strom/Spannung, Empfängerspannungen, Temperaturmessung
 
 */
-#define VARIOGPS_VERSION "Vers: V3.2.3.15e"
+#define VARIOGPS_VERSION "Vers: V3.2.3.15f"
 /*
 
   ******************************************************************
@@ -258,7 +258,7 @@ void sv_rising() {
   sv_PulsStartT = millis();
   sv_RisingT = micros();
   // attachInterrupt(0, sv_falling, FALLING);
-  attachInterrupt(digitalPinToInterrupt(SERVO_SIGNAL_PIN), sv_falling, FALLING);
+  attachInterrupt(digitalPinToInterrupt(SERVOSIGNAL_PIN), sv_falling, FALLING);
   sv_PauseWidth = sv_RisingT - sv_FallingT;
   #ifdef JETI_EX_SERIAL_OUT
     Serial.print("servosignal rising at: ");
@@ -276,7 +276,7 @@ void sv_falling() {
   sv_PulseWidth = sv_FallingT - sv_RisingT;
 
   // attachInterrupt(0, sv_rising, RISING);
-  attachInterrupt(digitalPinToInterrupt(SERVO_SIGNAL_PIN), sv_rising, RISING);
+  attachInterrupt(digitalPinToInterrupt(SERVOSIGNAL_PIN), sv_rising, RISING);
 }
 
 int getRCServoPulse() {
@@ -318,11 +318,13 @@ void setup()
   #endif
   #if defined(SPEEDVARIO) || defined(SERVOSIGNAL)
     // when pin D2 goes high, call the rising function
-    pinMode(SERVO_SIGNAL_PIN, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(SERVO_SIGNAL_PIN), sv_rising, RISING);
+    #ifdef SERVOSIGNAL_PIN_PULLUP
+      pinMode(SERVOSIGNAL_PIN, INPUT_PULLUP);
+    #endif
+    attachInterrupt(digitalPinToInterrupt(SERVOSIGNAL_PIN), sv_rising, RISING);
   #ifdef JETI_EX_SERIAL_OUT
     Serial.print("servosignal on pin: ");
-    Serial.print(SERVO_SIGNAL_PIN);
+    Serial.print(SERVOSIGNAL_PIN);
     Serial.println();
   #endif
   #endif
@@ -803,7 +805,7 @@ void loop()
           Serial.print("  === SIGNAL_ANALYSIS: ");
           Serial.print(millis());
           Serial.print(" : SIG PIN = ");
-          Serial.print(digitalRead(SERVO_SIGNAL_PIN));
+          Serial.print(digitalRead(SERVOSIGNAL_PIN));
           Serial.print(" : SIG_LOSS_CNT = ");
           Serial.print(sv_SignalLossCnt);
           Serial.print(" : SIGNAL_DURATION_MAX = ");
