@@ -16,8 +16,8 @@
 // #define CFG_DEFAULT
 //#define TEST_HARDWARE
 // #define CFG_AIRSPEEDTEST
-#define CFG_FFSWIFT32
-// #define CFG_FWSWIFT38
+// #define CFG_FFSWIFT32
+#define CFG_FWSWIFT38
 // #define CFG_RADICAL
 // #define CFG_CFSB14_60
 // #define CFG_FF_MACKA35
