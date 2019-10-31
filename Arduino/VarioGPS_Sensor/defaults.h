@@ -17,7 +17,11 @@
 //#define TEST_HARDWARE
 // #define CFG_AIRSPEEDTEST
 // #define CFG_FFSWIFT32
-#define CFG_FWSWIFT38
+// #define CFG_FWSWIFT38
+// #define CFG_RS_TOXIC
+// #define CFG_RS_TOXIC_GPS
+//  #define CFG_GPS_ONLY
+#define CFG_RXQ_ONLY
 // #define CFG_RADICAL
 // #define CFG_CFSB14_60
 // #define CFG_FF_MACKA35
@@ -41,6 +45,31 @@
   #define SERVOSIGNAL
   #define SERVOSIGNAL_PIN_PULLUP
   #define SERVOSIGNAL_PIN 3
+#elif defined(CFG_GPS_ONLY)
+  #define V_REF               5000        // set supply voltage from 1800 to 5500mV
+  #define SUPPORT_GPS
+  // #define SUPPORT_RX_VOLTAGE
+#elif defined(CFG_RXQ_ONLY)
+  #define V_REF               5000        // set supply voltage from 1800 to 5500mV
+  #define SERVOSIGNAL
+  #define SERVOSIGNAL_PIN_PULLUP
+  #define SERVOSIGNAL_PIN 3
+  // #define SUPPORT_RX_VOLTAGE
+#elif defined(CFG_RS_TOXIC)
+  #define V_REF               5000        // set supply voltage from 1800 to 5500mV
+  #define SUPPORT_BMx280                        // comment to disable devices
+  #define SERVOSIGNAL
+  #define SERVOSIGNAL_PIN_PULLUP
+  #define SPEEDVARIO
+  #define SUPPORT_RX_VOLTAGE
+#elif defined(CFG_RS_TOXIC_GPS)
+  #define V_REF               5000        // set supply voltage from 1800 to 5500mV
+  #define SUPPORT_MS5611_LPS                        // comment to disable devices
+  #define SERVOSIGNAL
+  #define SERVOSIGNAL_PIN_PULLUP
+  #define SPEEDVARIO
+  #define SUPPORT_GPS
+  #define SUPPORT_RX_VOLTAGE
 #elif defined(CFG_RADICAL)
   #define V_REF              3300        // set supply voltage from 1800 to 5500mV
   #define SUPPORT_MS5611_LPS

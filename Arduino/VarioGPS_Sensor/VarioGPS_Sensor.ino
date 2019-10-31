@@ -6,11 +6,21 @@
   Vario, GPS, Strom/Spannung, Empfängerspannungen, Temperaturmessung
 
 */
-#define VARIOGPS_VERSION "Vers: V3.2.3.15f"
+#define VARIOGPS_VERSION "Vers: V3.2.3.18"
 /*
 
   ******************************************************************
   Versionen:
+
+  V3.2.3.18 31.10.19  more enhanced led status for GPS status:
+                      * 10s blink: no comm. with GPS module
+                      * 2s blink: comm. wiht GPS module,
+                      * 1s blink: GPS has time sync
+                      * 0.5s blink: GPS has location sync
+                      in defaults.h a configuration to use this sensor only as
+                        RXQ-Sensor is prepared -> #define CFG_RXQ_ONLY
+  V3.2.3.17 01.09.19  support of arduino board status led
+  V3.2.3.16 16.08.19  delay time at start added to avoid first inacurate send (max) values
   V3.2.3.15 01.11.18  enhanced handling of the MS5611 pressure sensor (beta)
   V3.2.3.14 04.09.18  Cleanup von Telemetrie und Jetibox Menü
   V3.2.3.13 30.08.18  AirSpeed smoothing und tube correction modifyable by JetiBox
@@ -119,11 +129,14 @@
 */
 
 // uncomment this, to get debug Serial.prints instead of JetiExBus protocol for debugging
-// #define JETI_EX_SERIAL_OUT
+//  #define DEBUG_GPS_NMEA_PROTO
+//  #define JETI_EX_SERIAL_OUT
 
 #ifdef JETI_EX_SERIAL_OUT
 #include "JetiExTest.h"
 #include <Wire.h>
+static unsigned long locFixDuration = 0;
+static unsigned long timeFixDuration = 0;
 #else
 #include <JetiExSerial.h>
 #include <JetiExProtocol.h>
@@ -160,6 +173,17 @@ LPS lps;
 
 #define MEASURING_INTERVAL        180         //ms
 #define EEPROM_ADRESS_CAPACITY    20
+// #define RESET_EEPROMM  // uncomment this, to reset the EEPROM
+#define SUPPORT_STATUS_LED
+#ifdef SUPPORT_STATUS_LED
+enum ArduinoState {
+  NOT_STARTED,
+  SETUP,
+  LOOPING
+};
+ArduinoState ourState = NOT_STARTED;
+#endif
+
 
 struct {
   uint8_t mode = DEFAULT_GPS_MODE;
@@ -185,6 +209,7 @@ bool enableRx2 = DEFAULT_ENABLE_Rx2;
 bool enableExtTemp = DEFAULT_ENABLE_EXT_TEMP;
 int32_t gpsSpeed = 0;
 
+#ifdef SUPPORT_MPXV7002_MPXV5004
 struct {
   uint8_t state = DEFAULT_AIRSPEED_SENSOR;
   uint8_t TECmode = DEFAULT_TEC_MODE;
@@ -192,6 +217,7 @@ struct {
   float smoothingValue = DEFAULT_AIRSPEED_SMOOTHING;
   float tubeCorrection = DEFAULT_TUBE_CORRECTION;
 } airSpeedSensor;
+#endif
 
 #if defined(SPEEDVARIO) || defined(SERVOSIGNAL)
 
@@ -261,7 +287,7 @@ void sv_rising() {
   attachInterrupt(digitalPinToInterrupt(SERVOSIGNAL_PIN), sv_falling, FALLING);
   sv_PauseWidth = sv_RisingT - sv_FallingT;
   #ifdef JETI_EX_SERIAL_OUT
-    Serial.print("servosignal rising at: ");
+    Serial.print(F("servosignal rising at: "));
     Serial.print(sv_RisingT);
     Serial.println();
   #endif
@@ -310,12 +336,60 @@ bool checkRCServoSignal() {
 
 #endif
 
+#ifdef RESET_EEPROMM
+void resetEEPROM() {
+  for(int i=0; i < 255; i++){
+    EEPROM.write(i, 0xFF);
+  }
+  EEPROM.put(EEPROM_ADRESS_CAPACITY, 0.0f);
+  EEPROM.put(EEPROM_ADRESS_CAPACITY+sizeof(float), 0.0f);
+}
+#endif
+
+#ifdef SUPPORT_STATUS_LED
+void blink(uint16_t aDuration, uint16_t aCycle) {
+  static bool state = HIGH;
+  static unsigned long lastBlink = 0;
+
+  if (ourState == SETUP) {
+    state = HIGH;
+    unsigned long time = millis();
+    while ( (millis() - time) < aDuration ) {
+	    digitalWrite(13,state);
+      delay(aCycle);
+	    state = !state;
+	    digitalWrite(13,state);
+	    state = !state;
+      delay(aCycle);
+    }
+  } else if (ourState == LOOPING) {
+    if ((millis() - lastBlink) > aCycle) {
+	    state = !state;
+	    digitalWrite(13,state);
+      lastBlink = millis();
+    }
+  }
+}
+#endif
+
+
 void setup()
 {
+  ourState = SETUP;
+
+  #ifdef RESET_EEPROMM
+    resetEEPROM();
+  #endif
   #ifdef JETI_EX_SERIAL_OUT
     Serial.begin(115200);//sets the baud rate
-    Serial.println("== SpeedVario in TEST Mode ==");
+    Serial.println(F("== SpeedVario in TEST Mode =="));
   #endif
+
+
+  #ifdef SUPPORT_STATUS_LED
+  blink(3000, 500);
+  #endif
+
   #if defined(SPEEDVARIO) || defined(SERVOSIGNAL)
     // when pin D2 goes high, call the rising function
     #ifdef SERVOSIGNAL_PIN_PULLUP
@@ -323,7 +397,7 @@ void setup()
     #endif
     attachInterrupt(digitalPinToInterrupt(SERVOSIGNAL_PIN), sv_rising, RISING);
   #ifdef JETI_EX_SERIAL_OUT
-    Serial.print("servosignal on pin: ");
+    Serial.print(F("servosignal on pin: "));
     Serial.print(SERVOSIGNAL_PIN);
     Serial.println();
   #endif
@@ -350,6 +424,9 @@ void setup()
         }
       }
     }
+  #endif
+  #ifdef SUPPORT_STATUS_LED
+  blink(500, 100);
   #endif
 
   #if defined(SUPPORT_BMx280) || defined(SUPPORT_MS5611_LPS)
@@ -384,9 +461,15 @@ void setup()
 
   // read settings from eeprom
   #ifdef SUPPORT_GPS
+    #ifdef JETI_EX_SERIAL_OUT
+      Serial.println(F("GPS  mode == extended"));
+      gpsSettings.mode = GPS_extended;
+      initGPSCustomFields();
+    #else
   if (EEPROM.read(P_GPS_MODE) != 0xFF) {
-    gpsSettings.mode = EEPROM.read(P_GPS_MODE);
+      gpsSettings.mode = EEPROM.read(P_GPS_MODE);
   }
+    #endif
   if (EEPROM.read(P_GPS_3D) != 0xFF) {
     gpsSettings.distance3D = EEPROM.read(P_GPS_3D);
   }
@@ -568,19 +651,88 @@ void pollSensors() {
       float f = 0.9f + 0.1f * pressureSensor.smoothingValue;
       ourMS5611Pressure = (double) pressure + f * (double)(ourMS5611Pressure - pressure);
       pollTimeLast = pollTimeNow;
-        #ifdef JETI_EX_SERIAL_OUT_NO
-          Serial.print("pressure: ");
+        #ifdef JETI_EX_SERIAL_OUT
+          Serial.print(F("pressure: "));
           Serial.print(pressure);
-          Serial.print("smooth pressure: ");
+          Serial.print(F("smooth pressure: "));
           Serial.print(ourMS5611Pressure);
           Serial.println();
         #endif
-    #endif
   }
+  #endif
 }
 
-void loop()
-{
+unsigned long lastGPSCheck = 0;
+uint16_t gpsBlinkCycle = 0;
+static uint16_t gpsCharsProcessedLast = 0;
+
+#ifdef JETI_EX_SERIAL_OUT
+void printGPS_Info() {
+  Serial.print(millis() / 1000);
+  Serial.print(F("s: first fix time/location: "));
+  Serial.print(timeFixDuration);
+  Serial.print(F("s/"));
+  Serial.print(locFixDuration);
+  Serial.print(F("s "));
+  Serial.print(F("#-Satellites: "));
+  if (gps.satellites.isValid()) {
+    Serial.print(gps.satellites.value());
+  }
+  else
+  {
+    Serial.print(0);
+  }
+  if (gps.location.isValid())
+  {
+    if (locFixDuration == 0) {
+      locFixDuration = millis() / 1000;
+    }
+    Serial.print(F(" Location: "));
+    Serial.print(gps.location.lat(), 6);
+    Serial.print(F(","));
+    Serial.print(gps.location.lng(), 6);
+  }
+
+  if (gps.date.isValid())
+  {
+    if (timeFixDuration == 0 && gps.date.year() != 2000) {
+      timeFixDuration = millis() / 1000;
+    }
+    Serial.print(F("  Date/Time: "));
+    Serial.print(gps.date.month());
+    Serial.print(F("/"));
+    Serial.print(gps.date.day());
+    Serial.print(F("/"));
+    Serial.print(gps.date.year());
+  }
+
+  if (gps.time.isValid())
+  {
+    Serial.print(F(" "));
+    if (gps.time.hour() < 10) Serial.print(F("0"));
+    Serial.print(gps.time.hour());
+    Serial.print(F(":"));
+    if (gps.time.minute() < 10) Serial.print(F("0"));
+    Serial.print(gps.time.minute());
+    Serial.print(F(":"));
+    if (gps.time.second() < 10) Serial.print(F("0"));
+    Serial.print(gps.time.second());
+    Serial.print(F("."));
+    if (gps.time.centisecond() < 10) Serial.print(F("0"));
+    Serial.print(gps.time.centisecond());
+  }
+
+  Serial.println();
+}
+#endif
+
+void loop() {
+  ourState = LOOPING;
+
+  #ifdef SUPPORT_STATUS_LED
+  blink(0, gpsBlinkCycle);
+  #endif
+
   static long startAltitude = 0;
   static long uRelAltitude = 0;
   static long uAbsAltitude = 0;
@@ -902,8 +1054,7 @@ void loop()
     }
     #endif
   }
-
-#ifdef SUPPORT_GPS
+  #ifdef SUPPORT_GPS
   if (gpsSettings.mode != GPS_disabled) {
 
     static int homeSetCount = 0;
@@ -919,16 +1070,36 @@ void loop()
     while (gpsSerial.available() )
     {
       char c = gpsSerial.read();
+       #ifdef JETI_EX_SERIAL_OUT
+         #ifdef DEBUG_GPS_NMEA_PROTO
+         if (!(gps.satellites.isValid() && gps.satellites.value() > 0)) {
+           Serial.write(c);
+         }
+         #endif
+      #endif
       if (gps.encode(c)) {
+       checkGPS_NEO_Communication();
+       #ifdef JETI_EX_SERIAL_OUT
+         printSatelliteInfo();
+         #ifdef DEBUG_GPS_NMEA_PROTO
+         // Serial.println();
+         #endif
+      #endif
         break;
       } else {
         return;
       }
     }
 
+    if (gps.date.isValid()) {
+      if (gps.date.year() != 2000) {
+        gpsBlinkCycle = 1000;
+      }
+    }
 
     if (gps.location.isValid() && gps.location.age() < 2000) { // if Fix
 
+      gpsBlinkCycle = 500; // GPS has a location fix
       jetiEx.SetSensorValueGPS( ID_GPSLAT, false, gps.location.lat() );
       jetiEx.SetSensorValueGPS( ID_GPSLON, true, gps.location.lng() );
 
@@ -944,6 +1115,7 @@ void loop()
       lastGPSAltitudeTime = millis();
 
 
+#ifdef SUPPORT_MPXV7002_MPXV5004
       if (gps.speed.isUpdated() && airSpeedSensor.TECmode == TEC_GPS) {
 #ifdef SPEEDVARIO
         static uint32_t timeSpeedActinMS, timeSpeedLastinMS;
@@ -967,6 +1139,7 @@ void loop()
 #endif
 
       }
+#endif
 
       #ifdef UNIT_US
         jetiEx.SetSensorValue( ID_GPSSPEED, gps.speed.mph() );
@@ -1040,7 +1213,6 @@ void loop()
       jetiEx.SetSensorValue( ID_GPSSPEED, 0 );
       jetiEx.SetSensorValue( ID_HEADING, 0 );
     }
-
     jetiEx.SetSensorValue( ID_SATS, gps.satellites.value() );
     jetiEx.SetSensorValue( ID_HDOP, gps.hdop.value());
     #ifndef UNIT_US
@@ -1075,6 +1247,129 @@ void loop()
   #ifdef SUPPORT_JETIBOX_MENU
   HandleMenu();
   #endif
-  jetiEx.DoJetiSend();
+  #define START_DELAY_TIME 5000
+  if ( millis() > START_DELAY_TIME) {
+    jetiEx.DoJetiSend();
+  }
   #endif
 }
+
+#ifdef SUPPORT_GPS
+void checkGPS_NEO_Communication() {
+
+  if ( (millis() - lastGPSCheck) > 1000) {
+    uint16_t serialTransmitRate = gps.charsProcessed() - gpsCharsProcessedLast;
+    if (serialTransmitRate > 20){
+      gpsBlinkCycle = 2000;
+    } else {
+      gpsBlinkCycle = 10000;
+    }
+       #ifdef JETI_EX_SERIAL_OUT
+         Serial.println();
+         Serial.print(millis() / 1000);
+         Serial.print(": GPS/NMEA statistic - chars: ");
+         Serial.print(gps.charsProcessed());
+         Serial.print(" checksum ok/nok: ");
+         Serial.print(gps.passedChecksum());
+         Serial.print("/");
+         Serial.print(gps.failedChecksum());
+         Serial.print(" with fix: ");
+         Serial.print(gps.sentencesWithFix());
+         Serial.println();
+         printGPS_Info();
+       #endif
+    gpsCharsProcessedLast = gps.charsProcessed();
+    lastGPSCheck = millis();
+  }
+}
+#endif
+
+#ifdef JETI_EX_SERIAL_OUT
+static const int MAX_SATELLITES = 20;
+
+TinyGPSCustom totalGPGSVMessages(gps, "GPGSV", 1); // $GPGSV sentence, first element
+TinyGPSCustom messageNumber(gps, "GPGSV", 2);      // $GPGSV sentence, second element
+TinyGPSCustom satsInView(gps, "GPGSV", 3);         // $GPGSV sentence, third element
+TinyGPSCustom satNumber[4]; // to be initialized later
+TinyGPSCustom elevation[4];
+TinyGPSCustom azimuth[4];
+TinyGPSCustom snr[4];
+
+struct
+{
+  bool active;
+  int elevation;
+  int azimuth;
+  int snr;
+} sats[MAX_SATELLITES];
+
+void initGPSCustomFields() {
+// Initialize all the uninitialized TinyGPSCustom objects
+  for (int i=0; i<4; ++i)
+  {
+    satNumber[i].begin(gps, "GPGSV", 4 + 4 * i); // offsets 4, 8, 12, 16
+    elevation[i].begin(gps, "GPGSV", 5 + 4 * i); // offsets 5, 9, 13, 17
+    azimuth[i].begin(  gps, "GPGSV", 6 + 4 * i); // offsets 6, 10, 14, 18
+    snr[i].begin(      gps, "GPGSV", 7 + 4 * i); // offsets 7, 11, 15, 19
+  }
+
+}
+
+void printSatelliteInfo() {
+if (totalGPGSVMessages.isUpdated())
+    {
+      for (int i=0; i<4; ++i)
+      {
+        int no = atoi(satNumber[i].value());
+        // 1GSerial.print(F("SatNumber is ")); Serial.println(no);
+        if (no >= 1 && no <= MAX_SATELLITES)
+        {
+          sats[no-1].elevation = atoi(elevation[i].value());
+          sats[no-1].azimuth = atoi(azimuth[i].value());
+          sats[no-1].snr = atoi(snr[i].value());
+          sats[no-1].active = true;
+        }
+      }
+
+      int totalMessages = atoi(totalGPGSVMessages.value());
+      int currentMessage = atoi(messageNumber.value());
+      if (totalMessages == currentMessage)
+      {
+        Serial.print(F("Sats=")); Serial.print(gps.satellites.value());
+        Serial.print(F(" Nums="));
+        for (int i=0; i<MAX_SATELLITES; ++i)
+          if (sats[i].active)
+          {
+            Serial.print(i+1);
+            Serial.print(F(" "));
+          }
+        Serial.print(F(" Elevation="));
+        for (int i=0; i<MAX_SATELLITES; ++i)
+          if (sats[i].active)
+          {
+            Serial.print(sats[i].elevation);
+            Serial.print(F(" "));
+          }
+        Serial.print(F(" Azimuth="));
+        for (int i=0; i<MAX_SATELLITES; ++i)
+          if (sats[i].active)
+          {
+            Serial.print(sats[i].azimuth);
+            Serial.print(F(" "));
+          }
+
+        Serial.print(F(" SNR="));
+        for (int i=0; i<MAX_SATELLITES; ++i)
+          if (sats[i].active)
+          {
+            Serial.print(sats[i].snr);
+            Serial.print(F(" "));
+          }
+        Serial.println();
+
+        for (int i=0; i<MAX_SATELLITES; ++i)
+          sats[i].active = false;
+      }
+    }
+  }
+#endif
