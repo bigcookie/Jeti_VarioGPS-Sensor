@@ -13,17 +13,26 @@
 #define DEFAULT_PITOT_TUBE_CORRECTION 1.00f
 #define DEFAULT_SM_TUBE_CORRECTION 1.25f
 #define DEFAULT_TUBE_CORRECTION DEFAULT_SM_TUBE_CORRECTION
+
+// documentation of defines
+//  : SERVOSIGNAL_PIN : defines which pin is used for the cable to the receiver signal pin
+//  : SERVOSIGNAL_PIN_PULLUP : if defined the servo signal cable can be directly conncted to the arduino
+//  : SERVOSIGNAL_PIN_PULLUP : if not defined the servo signal cable to be connected with a 47kOhm resistor
+//                             
+//
 // #define CFG_DEFAULT
-//#define TEST_HARDWARE
+// #define TEST_HARDWARE
 // #define CFG_AIRSPEEDTEST
 // #define CFG_FFSWIFT32
 // #define CFG_FWSWIFT38
 // #define CFG_RS_TOXIC
+// #define CFG_RS_FW_LIBELLE
 // #define CFG_RS_TOXIC_GPS
-//  #define CFG_GPS_ONLY
+// #define CFG_GPS_ONLY
 #define CFG_RXQ_ONLY
 // #define CFG_RADICAL
 // #define CFG_CFSB14_60
+// #define CFG_RS_XSWIFT32
 // #define CFG_FF_MACKA35
 // #define CFG_PRESSURE_SENSOR_TEST
 // supported devices
@@ -35,7 +44,7 @@
   #define SERVOSIGNAL
   #define SERVOSIGNAL_PIN 3
   #define ANALOG_R_DIVIDER_20_20
-  #elif defined(CFG_PRESSURE_SENSOR_TEST)
+#elif defined(CFG_PRESSURE_SENSOR_TEST)
   #define V_REF              5000        // set supply voltage from 1800 to 5500mV
   #define SUPPORT_MS5611_LPS
 #elif defined(CFG_FF_MACKA35)
@@ -50,11 +59,17 @@
   #define SUPPORT_GPS
   // #define SUPPORT_RX_VOLTAGE
 #elif defined(CFG_RXQ_ONLY)
-  #define V_REF               5000        // set supply voltage from 1800 to 5500mV
+  #define V_REF               3300        // set supply voltage from 1800 to 5500mV
   #define SERVOSIGNAL
-  #define SERVOSIGNAL_PIN_PULLUP
-  #define SERVOSIGNAL_PIN 3
-  // #define SUPPORT_RX_VOLTAGE
+  // #define SERVOSIGNAL_PIN_PULLUP
+  #define SERVOSIGNAL_PIN 2
+#elif defined(CFG_RS_XSWIFT32)
+  #define V_REF               5000        // set supply voltage from 1800 to 5500mV
+  #define SUPPORT_BMx280                        // comment to disable devices
+  #define SERVOSIGNAL
+  #define SUPPORT_GPS
+  #define SUPPORT_RX_VOLTAGE
+  #define SERVOSIGNAL_PIN 2
 #elif defined(CFG_RS_TOXIC)
   #define V_REF               5000        // set supply voltage from 1800 to 5500mV
   #define SUPPORT_BMx280                        // comment to disable devices
@@ -62,6 +77,14 @@
   #define SERVOSIGNAL_PIN_PULLUP
   #define SPEEDVARIO
   #define SUPPORT_RX_VOLTAGE
+#elif defined(CFG_RS_FW_LIBELLE)
+  #define V_REF               5000        // set supply voltage from 1800 to 5500mV
+  #define SUPPORT_MS5611_LPS                        // comment to disable devices
+  #define SERVOSIGNAL                    // 40kOhm Resistor to SS_PIN
+  #define SPEEDVARIO
+  #define SUPPORT_GPS
+  #define SUPPORT_RX_VOLTAGE
+  #define SERVOSIGNAL_PIN 3
 #elif defined(CFG_RS_TOXIC_GPS)
   #define V_REF               5000        // set supply voltage from 1800 to 5500mV
   #define SUPPORT_MS5611_LPS                        // comment to disable devices
@@ -158,10 +181,6 @@ enum
   ID_SV_SIG_LOSS_CNT,
   ID_SV_SIGNAL_DURATION,
   ID_SV_SIGNAL_DURATION_MAX,
-#ifdef SIGNAL_FREQ
-  ID_SV_SIGNAL_FRQ,
-  ID_SV_SIGNAL_FRQ_RETARDED,
-#endif
 #endif
   ID_DIST,
   ID_TRIP,
@@ -222,10 +241,6 @@ JETISENSOR_CONST sensors[] PROGMEM =
   { ID_SV_SIG_LOSS_CNT,         "SigLossCnt", "#",  JetiSensor::TYPE_14b, 0 },
   { ID_SV_SIGNAL_DURATION_MAX,  "SigDuraMax","ms", JetiSensor::TYPE_22b, 0 },
   { ID_SV_SIGNAL_DURATION,  "SigDura","ms", JetiSensor::TYPE_22b, 0 },
-#ifdef SIGNAL_FREQ
-  { ID_SV_SIGNAL_FRQ,    "Signal Freq",      "Hz",  JetiSensor::TYPE_14b, 0 },
-  { ID_SV_SIGNAL_FRQ_RETARDED,    "SigFreqRet",      "Hz",  JetiSensor::TYPE_14b, 0 },
-#endif
 #endif
   { ID_DIST,        "Distance",   "m",          JetiSensor::TYPE_22b, 0 },
   { ID_TRIP,        "Trip",       "km",         JetiSensor::TYPE_22b, 2 },
@@ -350,10 +365,6 @@ enum {
   GPS_basic,
   GPS_extended
 };
-
-#ifdef SPEEDVARIO
-#define SPEEDVARIO_SIG_FREQ 50
-#endif
 
 // **** Voltage measurement settings ****
 

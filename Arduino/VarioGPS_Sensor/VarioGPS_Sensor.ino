@@ -6,12 +6,15 @@
   Vario, GPS, Strom/Spannung, Empfängerspannungen, Temperaturmessung
 
 */
-#define VARIOGPS_VERSION "Vers: V3.2.3.18"
+#define VARIOGPS_VERSION "Vers: V3.2.3.20"
 /*
 
   ******************************************************************
   Versionen:
 
+  V3.2.3.20 12.11.20  - fixed code for "standalone RXQ" build
+  V3.2.3.19 15.01.20  - cleanup signal code (signal frequency)
+                      - added delay before first signal duration (max) handling
   V3.2.3.18 31.10.19  more enhanced led status for GPS status:
                       * 10s blink: no comm. with GPS module
                       * 2s blink: comm. wiht GPS module,
@@ -221,17 +224,12 @@ struct {
 
 #if defined(SPEEDVARIO) || defined(SERVOSIGNAL)
 
-  volatile int sv_PulseWidth = 0;
+  volatile unsigned long  sv_PulseWidth = 0;
   volatile int sv_PauseWidth = 0;
-  volatile int sv_RisingT = 0;
-  volatile int sv_FallingT = 0;
-  volatile int sv_PulsStartT = 0;
+  volatile unsigned long  sv_RisingT = 0;
+  volatile unsigned long  sv_FallingT = 0;
+  volatile unsigned long  sv_PulsStartT = 0;
   volatile int sv_SignalPeriod = 0;
-  #ifdef SIGNAL_FREQ
-    volatile int sv_SignalFreq = 0;
-    const uint8_t SIGNAL_FREQ_BUF_SIZE = 100;
-    uint8_t sv_SignalFreqArray[SIGNAL_FREQ_BUF_SIZE];
-  #endif
   int sv_sigPeriodSum = 0;
   int sv_PulsCnt = 0;
   volatile static int sv_SignalLossCnt = 0;
@@ -315,22 +313,26 @@ int getRCServoPulse() {
 }
 
 bool checkRCServoSignal() {
-  static bool sv_SignalLossState = false;
-  int fallingPulseTime = sv_PulsStartT;
-  int sigDuration = (int) millis() - fallingPulseTime;
-  sv_SignalDuration = max(sigDuration, sv_SignalDuration);
+  // start the RC servo signal handling after 10s to 
+  // avoid wrong durations before RX is bound to TX
+  if (millis() > 10000) {
+    static bool sv_SignalLossState = false;
+    int fallingPulseTime = sv_PulsStartT;
+    int sigDuration = (int) millis() - fallingPulseTime;
+    sv_SignalDuration = max(sigDuration, sv_SignalDuration);
 
-  if (sv_SignalDurationMax < sv_SignalDuration ) {
-    sv_SignalDurationMax = sv_SignalDuration;
-  }
-  if (sv_SignalDuration > 100) {
-    if (!sv_SignalLossState) {
-      sv_SignalLossCnt++;
+    if (sv_SignalDurationMax < sv_SignalDuration ) {
+      sv_SignalDurationMax = sv_SignalDuration;
     }
-    sv_SignalLossState = true;
-    return false;
+    if (sv_SignalDuration > 100) {
+      if (!sv_SignalLossState) {
+        sv_SignalLossCnt++;
+      }
+      sv_SignalLossState = true;
+      return false;
+    }
+    sv_SignalLossState = false;
   }
-  sv_SignalLossState = false;
   return true;
 }
 
@@ -348,27 +350,28 @@ void resetEEPROM() {
 
 #ifdef SUPPORT_STATUS_LED
 void blink(uint16_t aDuration, uint16_t aCycle) {
-  static bool state = HIGH;
-  static unsigned long lastBlink = 0;
+  return;
+  // static bool state = HIGH;
+  // static unsigned long lastBlink = 0;
 
-  if (ourState == SETUP) {
-    state = HIGH;
-    unsigned long time = millis();
-    while ( (millis() - time) < aDuration ) {
-	    digitalWrite(13,state);
-      delay(aCycle);
-	    state = !state;
-	    digitalWrite(13,state);
-	    state = !state;
-      delay(aCycle);
-    }
-  } else if (ourState == LOOPING) {
-    if ((millis() - lastBlink) > aCycle) {
-	    state = !state;
-	    digitalWrite(13,state);
-      lastBlink = millis();
-    }
-  }
+  // if (ourState == SETUP) {
+  //   state = HIGH;
+  //   unsigned long time = millis();
+  //   while ( (millis() - time) < aDuration ) {
+  //           digitalWrite(13,state);
+  //     delay(aCycle);
+  //           state = !state;
+  //           digitalWrite(13,state);
+  //           state = !state;
+  //     delay(aCycle);
+  //   }
+  // } else if (ourState == LOOPING) {
+  //   if ((millis() - lastBlink) > aCycle) {
+  //           state = !state;
+  //           digitalWrite(13,state);
+  //     lastBlink = millis();
+  //   }
+  // }
 }
 #endif
 
@@ -451,12 +454,6 @@ void setup()
   #endif
   #if defined(SPEEDVARIO) || defined(SERVOSIGNAL)
   // default settings, if there are no presets
-  #ifdef SIGNAL_FREQ
-    for (int i = 0 ; i < SIGNAL_FREQ_BUF_SIZE; i++) {
-      sv_SignalFreqArray[i] = -1;
-    }
-  #endif // SIGNAL_FREQ
-
   #endif  // SPEEDVARIO
 
   // read settings from eeprom
@@ -745,7 +742,7 @@ void loop() {
   #endif
 
   #if defined(SPEEDVARIO) || defined(SERVOSIGNAL)
-    bool checkControlServo = checkRCServoSignal();
+    checkRCServoSignal();
   #endif
 
   unsigned long dTmeasure = millis() - lastTime;     // delta time in ms
@@ -916,6 +913,9 @@ void loop() {
 
     }
 
+
+  #endif // SUPPORT_MS5611_LPS | SUPPORT_BMx280
+
     #if defined(SPEEDVARIO) || defined(SERVOSIGNAL)
       static unsigned int loopCnt = 0;
       jetiEx.SetSensorValue( ID_SV_SIG_LOSS_CNT, sv_SignalLossCnt);
@@ -923,28 +923,8 @@ void loop() {
       jetiEx.SetSensorValue( ID_SV_SIGNAL_DURATION, sv_SignalDuration);
       int timeSinceLastMeasure = millis() - sv_LastFreqMeasureTime;
       sv_LastFreqMeasureTime = millis();
-      #ifdef SIGNAL_FREQ
-        sv_SignalFreq = (sv_PulsCnt - sv_lastPulsCnt) * 1000 / timeSinceLastMeasure;
-      #endif // SIGNAL_FREQ
       sv_lastPulsCnt = sv_PulsCnt;
 
-      #ifdef SIGNAL_FREQ
-        static uint8_t sigFreqArrayPtr = 0;
-        static uint8_t sigFreqArrayRetardedPtr = 0;
-        sigFreqArrayPtr++;
-        if (sigFreqArrayPtr == SIGNAL_FREQ_BUF_SIZE) {
-          sigFreqArrayPtr = 0;
-        }
-        sigFreqArrayRetardedPtr = sigFreqArrayPtr+1;
-        if (sigFreqArrayRetardedPtr == SIGNAL_FREQ_BUF_SIZE) {
-          sigFreqArrayRetardedPtr = 0;
-        }
-        sv_SignalFreqArray[sigFreqArrayPtr] = sv_SignalFreq;
-        jetiEx.SetSensorValue( ID_SV_SIGNAL_FRQ, sv_SignalFreqArray[sigFreqArrayPtr]);
-        if (sv_SignalFreqArray[ID_SV_SIGNAL_FRQ_RETARDED] != -1) {
-          jetiEx.SetSensorValue( ID_SV_SIGNAL_FRQ_RETARDED, sv_SignalFreqArray[sigFreqArrayRetardedPtr]);
-        }
-      #endif // SIGNAL_FREQ
       #ifdef SAW_TOOTH
         sawtoothVal++;
         if (sawtoothVal > 50) {
@@ -968,9 +948,6 @@ void loop() {
           Serial.println();
         #endif
     #endif // SPEEDVARIO | SERVOSIGNAL
-
-
-  #endif // SUPPORT_MS5611_LPS | SUPPORT_BMx280
 
     lastTime = millis();
 
@@ -1078,7 +1055,7 @@ void loop() {
          #endif
       #endif
       if (gps.encode(c)) {
-       checkGPS_NEO_Communication();
+       // checkGPS_NEO_Communication();
        #ifdef JETI_EX_SERIAL_OUT
          printSatelliteInfo();
          #ifdef DEBUG_GPS_NMEA_PROTO
@@ -1197,7 +1174,7 @@ void loop() {
       }
 
     } else { // If Fix end
-      #ifdef SPEEDVARIO
+      #ifdef SUPPORT_MPXV7002_MPXV5004
       if (airSpeedSensor.TECmode == TEC_GPS) {
         sv_VarioEnergyCompensationValue = 0.0; // reset TEC value, in case of Fix end
       }
@@ -1229,6 +1206,7 @@ void loop() {
   }
   #endif
 
+  #if defined(SUPPORT_MS5611_LPS) || defined(SUPPORT_BMx280)
   #ifdef UNIT_US
     // EU to US conversions
     // ft/s = m/s / 0.3048
@@ -1240,6 +1218,7 @@ void loop() {
 
   jetiEx.SetSensorValue( ID_ALTREL, uRelAltitude );
   jetiEx.SetSensorValue( ID_ALTABS, uAbsAltitude );
+  #endif
 
   pollSensors();
 
