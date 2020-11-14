@@ -45,6 +45,21 @@ Für die Messung der Empfängerspannung stehen die Werte zur Verfügung:
 
 Zur Messung von zB. der Motorentemperatur kann zusätzlich ein NTC-Temperaturwiederstand (-55 bis +155°C) angeschlossen werden.
   
+Für die Messung der Empfangsqualität (RXQ) muss ein Kabel vom Arduino Pin 2 mit einem 47kOhm Vorwiderstand zu einem freien Servoausgang hergestellt werden. Am Sender wird z.B. 100Hz Sendefrequenz eingestellt, auf dem Empfänger muss dann die Servo-Output Period auf "AUTO" oder "by transmitter" eingestellt werden und der benutzte Servo-Ausgang muss in den Fail-Safe-Einstellungen auf "AUS" gesetzt werden. 
+Der Arduino misst nun die Zeitabstände zwischen den am Servoausgang ausgegebenen Servosignale (PWM) (und zwar alle !!!), was bei 100Hz 10ms sein sollten.
+Beim Empfänger muss die Servo-Output-Period auf "AUTO" eingestellt sein, damit die PWM Signaldauer nicht vom Empfänger erzeugt wird. Zudem muss beim benutzten Empfängerausgang die Fail-Safe-Einstellung auf "AUS" eingestellt sein, damit im Problemfall, das Servosignal nicht vom RX erzeugt wird.
+
+Mehr Details und Erläuterungen sind unter: http://www.so-fa.de/nh/JetiSensorRXQ zu finden.
+Damit sind
+- Signal Duration (SigDura) : letzter Abtastwert des Abstand zweier PWM Impulse
+- Maximum Signal Duration (MaxSigDura) : maximaler Abtastwert des Abstands zweier PWM Impulse (lückenlos gezählt !!!)
+- Anzahl Signalverlust (SigLossCnt) : Werden Bereich ohne Servosignal > 100ms dedektiert, wird der SigLossCnt um 1 erhöht
+Zum Aktivieren dieses Features sind folgende #defines in der Datei defaults.h gedacht:
+- #define SERVOSIGNAL : schaltet Feature im Code ein
+- #define SERVOSIGNAL_PIN : (default: 2) definiert den zu nutzenden Arduino Eingangs-Pin
+- #define SERVOSIGNAL_PIN_PULLUP : (default: "not defined") dies muss definiert sein, wenn der RX ohen Vorwiderstand angeschlossen wird
+
+
 ## JetiBox Einstellungen
 
 ![JetiBox](https://raw.githubusercontent.com/nightflyer88/Jeti_VarioGPS-Sensor/master/Doc/img/JetiBox_settings.png)

@@ -6,12 +6,13 @@
   Vario, GPS, Strom/Spannung, Empfängerspannungen, Temperaturmessung
 
 */
-#define VARIOGPS_VERSION "Vers: V3.2.3.20"
+#define VARIOGPS_VERSION "Vers: V3.2.3.21"
 /*
 
   ******************************************************************
   Versionen:
 
+  V3.2.3.21 14.11.20  - more cleanups and more documentation, no functional changes
   V3.2.3.20 12.11.20  - fixed code for "standalone RXQ" build
   V3.2.3.19 15.01.20  - cleanup signal code (signal frequency)
                       - added delay before first signal duration (max) handling
@@ -225,7 +226,6 @@ struct {
 #if defined(SPEEDVARIO) || defined(SERVOSIGNAL)
 
   volatile unsigned long  sv_PulseWidth = 0;
-  volatile int sv_PauseWidth = 0;
   volatile unsigned long  sv_RisingT = 0;
   volatile unsigned long  sv_FallingT = 0;
   volatile unsigned long  sv_PulsStartT = 0;
@@ -278,12 +278,15 @@ uint8_t getVoltageSensorTyp() {
 #if defined(SPEEDVARIO) || defined(SERVOSIGNAL)
 
 void sv_rising() {
-  sv_SignalDuration = millis() - sv_PulsStartT;
-  sv_PulsStartT = millis();
+  // this interrupt routine is called/triggerd each time the servo signal
+  // is rising from 0 to 3.3V
+  volatile long now = millis();
+  // so the difference since the last rising edge is the signal duration
+  sv_SignalDuration = now - sv_PulsStartT;
+  sv_PulsStartT = now;
   sv_RisingT = micros();
   // attachInterrupt(0, sv_falling, FALLING);
   attachInterrupt(digitalPinToInterrupt(SERVOSIGNAL_PIN), sv_falling, FALLING);
-  sv_PauseWidth = sv_RisingT - sv_FallingT;
   #ifdef JETI_EX_SERIAL_OUT
     Serial.print(F("servosignal rising at: "));
     Serial.print(sv_RisingT);
@@ -291,14 +294,12 @@ void sv_rising() {
   #endif
 }
 
-#define MAXLOOP 20
 volatile int sigCnt = 0;
 void sv_falling() {
-  volatile int now = micros();
+  // calculation of the pulse width is only neccessary for
+  // servo position examination
   sv_PulsCnt++;
-  sv_FallingT = now;
-  sv_PulseWidth = sv_FallingT - sv_RisingT;
-
+  sv_PulseWidth = micros() - sv_RisingT;
   // attachInterrupt(0, sv_rising, RISING);
   attachInterrupt(digitalPinToInterrupt(SERVOSIGNAL_PIN), sv_rising, RISING);
 }
@@ -317,6 +318,7 @@ bool checkRCServoSignal() {
   // avoid wrong durations before RX is bound to TX
   if (millis() > 10000) {
     static bool sv_SignalLossState = false;
+    // if there is no servo signal
     int fallingPulseTime = sv_PulsStartT;
     int sigDuration = (int) millis() - fallingPulseTime;
     sv_SignalDuration = max(sigDuration, sv_SignalDuration);
