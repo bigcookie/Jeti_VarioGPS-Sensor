@@ -1,13 +1,13 @@
 # VarioGPS-Sensor
 
-Universeller Jeti Telemetrie Sensor mit vielen Möglichkeiten: Vario, GPS, Strom/Spannung/Kapazität/Leistung für Hauptantrieb, Empfängerspannung und Temperaturmessung. Der Sensor ist total einfach nachbaubar, und sollte auch von Elektronik-Anfängern problemlos zu bewerkstelligen sein. 
+Universeller Jeti Telemetrie Sensor mit vielen Möglichkeiten: Vario, GPS, Strom/Spannung/Kapazität/Leistung für Hauptantrieb, Empfängerspannung, Temperaturmessung und Empfangsqualität (RXQ). Der Sensor ist total einfach nachbaubar, und sollte auch von Elektronik-Anfängern problemlos zu bewerkstelligen sein. 
 
 ## Telemetrie
 
-![EX-vario](https://raw.githubusercontent.com/nightflyer88/Jeti_VarioGPS-Sensor/master/Doc/img/EX_vario.bmp)
-![EX-GPS](https://raw.githubusercontent.com/nightflyer88/Jeti_VarioGPS-Sensor/master/Doc/img/EX_gps.bmp)
-![EX-GPS2](https://raw.githubusercontent.com/nightflyer88/Jeti_VarioGPS-Sensor/master/Doc/img/EX_gps2.bmp)
-![EX-VA](https://raw.githubusercontent.com/nightflyer88/Jeti_VarioGPS-Sensor/master/Doc/img/EX_volt_amp.bmp)
+![EX-vario](https://raw.githubusercontent.com/Pulsar07/Jeti_VarioGPS-Sensor/SpeedVario/Doc/img/EX_vario.bmp)
+![EX-GPS](https://raw.githubusercontent.com/Pulsar07/Jeti_VarioGPS-Sensor/SpeedVario/Doc/img/EX_gps.bmp)
+![EX-GPS2](https://raw.githubusercontent.com/Pulsar07/Jeti_VarioGPS-Sensor/SpeedVario/Doc/img/EX_gps2.bmp)
+![EX-VA](https://raw.githubusercontent.com/Pulsar07/Jeti_VarioGPS-Sensor/SpeedVario/Doc/img/EX_volt_amp.bmp)
 
 Mit Luftdrucksensor werden die Werte angezeigt:
 - Rel. und Abs. Höhe
@@ -45,25 +45,28 @@ Für die Messung der Empfängerspannung stehen die Werte zur Verfügung:
 
 Zur Messung von zB. der Motorentemperatur kann zusätzlich ein NTC-Temperaturwiederstand (-55 bis +155°C) angeschlossen werden.
   
+### RXQ - Empfangsqualität
 Für die Messung der Empfangsqualität (RXQ) muss ein Kabel vom Arduino Pin 2 mit einem 47kOhm Vorwiderstand zu einem freien Servoausgang hergestellt werden. Am Sender wird z.B. 100Hz Sendefrequenz eingestellt, auf dem Empfänger muss dann die Servo-Output Period auf "AUTO" oder "by transmitter" eingestellt werden und der benutzte Servo-Ausgang muss in den Fail-Safe-Einstellungen auf "AUS" gesetzt werden. 
-Der Arduino misst nun die Zeitabstände zwischen den am Servoausgang ausgegebenen Servosignale (PWM) (und zwar alle !!!), was bei 100Hz 10ms sein sollten.
+Der Arduino misst nun die Zeitabstände zwischen den am Servoausgang ausgegebenen Servosignale (PWM) (und zwar alle !!!), was bei 100Hz 10ms sein sollte.
 Beim Empfänger muss die Servo-Output-Period auf "AUTO" eingestellt sein, damit die PWM Signaldauer nicht vom Empfänger erzeugt wird. Zudem muss beim benutzten Empfängerausgang die Fail-Safe-Einstellung auf "AUS" eingestellt sein, damit im Problemfall, das Servosignal nicht vom RX erzeugt wird.
 
 Mehr Details und Erläuterungen sind unter: http://www.so-fa.de/nh/JetiSensorRXQ zu finden.
 Damit sind
-- Signal Duration (SigDura) : letzter Abtastwert des Abstand zweier PWM Impulse
+- Signal Duration (SigDura) : letzter Abtastwert des Abstand zweier PWM Impulse in ms 
 - Maximum Signal Duration (MaxSigDura) : maximaler Abtastwert des Abstands zweier PWM Impulse (lückenlos gezählt !!!)
-- Anzahl Signalverlust (SigLossCnt) : Werden Bereich ohne Servosignal > 100ms dedektiert, wird der SigLossCnt um 1 erhöht
-Zum Aktivieren dieses Features sind folgende #defines in der Datei defaults.h gedacht:
+- Anzahl Signalverlust (SigLossCnt) : werden Abstände > 100ms dedektiert, wird der SigLossCnt um 1 erhöht (sollte immer 0 sein !)
+
+Zum Aktivieren dieses Features Code sind folgende #defines in der Datei defaults.h gedacht:
 - #define SERVOSIGNAL : schaltet Feature im Code ein
 - #define SERVOSIGNAL_PIN : (default: 2) definiert den zu nutzenden Arduino Eingangs-Pin
-- #define SERVOSIGNAL_PIN_PULLUP : (default: "not defined") dies muss definiert sein, wenn der RX ohen Vorwiderstand angeschlossen wird
+- #define SERVOSIGNAL_PIN_PULLUP : (default: "not defined") dies muss definiert sein, wenn der RX ohne Vorwiderstand angeschlossen wird
+
+Die Erfahrung der letzten 2 Jahre, ca. 15 Modellen, Abstand zum Modell bis 1500m, bei gut verlegten Antennen, zeigt, dass selbst bei Sender-Signalverlustmeldungen, die SigDuraMax immer unter 100ms bleibt, was zeigt, dass die Jeti-Signalverlustmeldung eben meist am Verlust des Rückkanals liegt!
 
 
 ## JetiBox Einstellungen
 
-![JetiBox](https://raw.githubusercontent.com/nightflyer88/Jeti_VarioGPS-Sensor/master/Doc/img/JetiBox_settings.png)
-
+![JetiBox](https://raw.githubusercontent.com/Pulsar07/Jeti_VarioGPS-Sensor/SpeedVario/Doc/img/JetiBox_settings.png)
 Folgende Einstellungen können per Jetibox vorgenommen werden:
 - GPS: deaktiviert, Basic oder Extended
 - GPS Distanz: 2D oder 3D
@@ -91,7 +94,7 @@ Folgende Einstellungen können per Jetibox vorgenommen werden:
 
 Der VarioGPS Sensor kann individuell nach seinen eigenen Wünschen zusammengestellt werden. Es ist möglich den Sensor als reines Vario zu betreiben, nur zur Vermessung des Antriebs, oder als Überwachung der Empfängerstromversorgung. Die benötigten Sensoren werden einfach am Arduino angelötet, und per Jetibox aktiviert.
 
-![schematic](https://raw.githubusercontent.com/nightflyer88/Jeti_VarioGPS-Sensor/master/Doc/img/VarioGPS_schematic.png)
+![schematic](https://raw.githubusercontent.com/Pulsar07/Jeti_VarioGPS-Sensor/SpeedVario/Doc/img/VarioGPS_schematic.png)
 
 ## Firmware laden
 
@@ -103,11 +106,9 @@ Treten nach einem Firmwareupdate Probleme auf, sollten per JetiBox mit "Load def
 
 ### MAC
 
-Für MAC User gibt es das Programm HexUploader und kann hier heruntergeladen werden: https://github.com/nightflyer88/HexUploader
+Für MAC User gibt es das Programm HexUploader und kann hier heruntergeladen werden: https://github.com/Pulsar07/Jeti_VarioGPS-Sensor/tree/SpeedVario simples Programm zum laden der Firmware, einfach das Arduino Board per USB anschliessen, Arduino Type "Pro mini" und den USB-Serial Port auswählen. Nun das entsprechende hex-file auswählen und der upload startet automatisch.
 
-Der HexUploader ist ein simples Programm zum laden der Firmware, einfach das Arduino Board per USB anschliessen, Arduino Type "Pro mini" und den USB-Serial Port auswählen. Nun das entsprechende hex-file auswählen und der upload startet automatisch.
-
-![hexuploader2](https://raw.githubusercontent.com/nightflyer88/Jeti_VarioGPS-Sensor/master/Doc/img/HexUploader.png)
+![hexuploader2](https://raw.githubusercontent.com/Pulsar07/Jeti_VarioGPS-Sensor/SpeedVario/Doc/img/HexUploader.png)
 
 ### Windows
 
@@ -115,4 +116,4 @@ Für Windows User kann der XLoader verwendet werden: http://russemotto.com/xload
 
 Der Xloader ist ebenfalls ein simples Programm, einfach das hex-file, device und COM-port auswählen und auf "Upload" drücken.
 
-![xloader](https://raw.githubusercontent.com/nightflyer88/Jeti_VarioGPS-Sensor/master/Doc/img/xloader.png)
+![xloader](https://raw.githubusercontent.com/Pulsar07/Jeti_VarioGPS-Sensor/SpeedVario/Doc/img/xloader.png)
