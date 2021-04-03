@@ -12,6 +12,7 @@
   ******************************************************************
   Versionen:
   V2.3.7.0 01.03.21 TEC changes, 
+  V2.3.6.3 03.04.21 bugfix do the ms5611.run() only if MS5611 is detected
   V2.3.6.2 01.03.21 bugfix JetiExSensor ExBuf overrun fixed (lib added) and usage of new prio-defines
   V2.3.6.1 23.02.21 bug with wrong height values for VarioMS5611 fixed
   V2.3.6  19.02.21  priorized telemetry values introduced, now variometer value is  transmitted about 10 times/s
@@ -1026,13 +1027,15 @@ void loop()
   jetiEx.SetSensorValue( ID_ALTABS, uAbsAltitude, JEP_PRIO_ULTRA_LOW);
   
   #ifdef SUPPORT_MS5611
-  ms5611.run();
-  // to get a good responsiveness of the variometer value get set the variometer value very often
-  static unsigned long lastVarioTime = 0;
-  if (millis() > lastVarioTime + 10) {
-    setFastVariometerValues();
-    lastVarioTime = millis();
-  }
+  if (pressureSensor.type == MS5611_) {
+    ms5611.run();
+    // to get a good responsiveness of the variometer value get set the variometer value very often
+    static unsigned long lastVarioTime = 0;
+    if (millis() > lastVarioTime + 10) {
+      setFastVariometerValues();
+      lastVarioTime = millis();
+    }
+  } 
   #endif
 
 
