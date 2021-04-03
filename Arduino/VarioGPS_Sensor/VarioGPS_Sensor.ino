@@ -6,11 +6,12 @@
   Vario, GPS, Strom/Spannung, Empfängerspannungen, Temperaturmessung
 
 */
-#define VARIOGPS_VERSION "Version V2.3.6.2"
+#define VARIOGPS_VERSION "Version V2.3.7.0"
 /*
 
   ******************************************************************
   Versionen:
+  V2.3.7.0 01.03.21 TEC changes, 
   V2.3.6.2 01.03.21 bugfix JetiExSensor ExBuf overrun fixed (lib added) and usage of new prio-defines
   V2.3.6.1 23.02.21 bug with wrong height values for VarioMS5611 fixed
   V2.3.6  19.02.21  priorized telemetry values introduced, now variometer value is  transmitted about 10 times/s
@@ -197,7 +198,8 @@ const float timefactorCapacityConsumption = (1000.0/MEASURING_INTERVAL*60*60)/10
 bool enableRx1 = DEFAULT_ENABLE_Rx1;
 bool enableRx2 = DEFAULT_ENABLE_Rx2;
 bool enableExtTemp = DEFAULT_ENABLE_EXT_TEMP;
-uint8_t TECmode = DEFAULT_TEC_MODE;
+uint8_t ourTECmode = DEFAULT_TEC_MODE;
+uint8_t ourTEC_RemoteControl = DEFAULT_TEC_MODE;
 uint8_t airSpeedSensor = DEFAULT_AIRSPEED_SENSOR;
 
 unsigned long lastTime = 0;
@@ -214,15 +216,14 @@ long lastAltitude = 0;
 
 // airspeed variables
 int refAirspeedPressure;
-float uAirSpeed = 0;
-float lastAirSpeed = 0;
+float ourAirSpeed = 0;
+float ourLastAirSpeed = 0;
 
 // TEC variables
-unsigned long dT = 0;
-float dV;
-float uSpeedMS;
-long  lastTimeSpeed = 0;
-float lastGPSspeedMS = 0;
+unsigned long ourDeltaT = 0;
+float ourDeltaV;
+long  ourLastTimeSpeed = 0;
+float ourLastGpsSpeed = 0;
 
 // GPS variables
 int homeSetCount = 0;
@@ -235,7 +236,9 @@ unsigned long tripDist;
 
 
 // Restart CPU
+
 void(* resetCPU) (void) = 0;
+int16_t getDebugInfo();
 
 #include "HandleMenu.h"
 
@@ -454,7 +457,7 @@ void setup()
   
   #ifdef SUPPORT_TEC
   if (EEPROM.read(P_TEC_MODE) != 0xFF) {
-    TECmode = EEPROM.read(P_TEC_MODE);
+    ourTECmode = EEPROM.read(P_TEC_MODE);
   }
   #endif
   
@@ -576,18 +579,53 @@ void setup()
 
 }
 
+#ifdef SUPPORT_SYS_INTERNALS
+extern unsigned int __bss_end;
+extern unsigned int __heap_start;
+extern void *__brkval;
+
+int16_t getFreeSram() {
+  uint8_t newVariable;
+  // heap is empty, use bss as start memory address
+  if ((uint16_t)__brkval == 0)
+    return (((uint16_t)&newVariable) - ((uint16_t)&__bss_end));
+  // use heap end as the start of the memory address
+  else
+    return (((uint16_t)&newVariable) - ((uint16_t)__brkval));
+}
+
+int16_t getDebugInfo() {
+  return getFreeSram();
+}
+
+#endif
+
+#if defined(SUPPORT_TEC) &&  defined(SUPPORT_RXQ) 
+void checkTECRemoteControl() {
+  if (ourServoSignalPulseWidth > 1750 ) {
+    ourTEC_RemoteControl = TEC_airSpeed;
+  } else if (ourServoSignalPulseWidth < 1250 ) {
+    ourTEC_RemoteControl = TEC_GPS;
+  } else {
+    ourTEC_RemoteControl = TEC_disabled;
+  }
+}
+#endif
 
 void loop()
 {
   #ifdef SUPPORT_EX_BUS
   //if(jetiEx.IsBusReleased()){
   #endif
-  
+
   #ifdef SUPPORT_RXQ
     checkRCServoSignal();
   #endif
 
   if((millis() - lastTime) > MEASURING_INTERVAL) {
+    #if defined(SUPPORT_TEC) &&  defined(SUPPORT_RXQ) 
+    checkTECRemoteControl();
+    #endif
 
     #ifdef SUPPORT_MPXV7002_MPXV5004
     if(airSpeedSensor){
@@ -595,30 +633,31 @@ void loop()
       // get air speed from MPXV7002/MPXV5004
       // based on code from johnlenfr, http://johnlenfr.1s.fr
       int airSpeedPressure = analogRead(AIRSPEED_PIN);
+      jetiEx.SetSensorValue( ID_DEBUG, airSpeedPressure, JEP_PRIO_HIGH);        // speed in km/h
       if (airSpeedPressure < refAirspeedPressure) airSpeedPressure = refAirspeedPressure;
 
       // differential pressure in Pa, 1 V/kPa, max 3920 Pa
       float pitotpressure = 5000.0 * ((airSpeedPressure - refAirspeedPressure) / 1024.0f) + uPressure;    
       float density = (uPressure * DRY_AIR_MOLAR_MASS) / ((uTemperature + 273.16) * UNIVERSAL_GAS_CONSTANT);
-      uAirSpeed = sqrt ((2 * (pitotpressure - uPressure)) / density);
+      ourAirSpeed = sqrt ((2 * (pitotpressure - uPressure)) / density);
       
       // IIR Low Pass Filter
-      uAirSpeed = uAirSpeed + AIRSPEED_SMOOTHING * (lastAirSpeed - uAirSpeed);
+      ourAirSpeed = ourAirSpeed + AIRSPEED_SMOOTHING * (ourLastAirSpeed - ourAirSpeed);
 
       // TEC 
       #ifdef SUPPORT_TEC
-      if(TECmode == TEC_airSpeed){
-        uSpeedMS = uAirSpeed;
-        dV = uAirSpeed - lastAirSpeed;     // delta speed in m/s
+      if(ourTECmode == TEC_airSpeed || (ourTECmode == TEC_RC && ourTEC_RemoteControl == TEC_airSpeed)){
+        ourAirSpeed = ourAirSpeed;
+        ourDeltaV = ourAirSpeed - ourLastAirSpeed;     // delta speed in m/s
       }
       #endif
       
-      lastAirSpeed = uAirSpeed;
+      ourLastAirSpeed = ourAirSpeed;
 
       #ifdef UNIT_US
-        jetiEx.SetSensorValue( ID_AIRSPEED, uAirSpeed*2.23694, JEP_PRIO_LOW );    // speed in mph
+        jetiEx.SetSensorValue( ID_AIRSPEED, ourAirSpeed*2.23694, JEP_PRIO_LOW );    // speed in mph
       #else
-        jetiEx.SetSensorValue( ID_AIRSPEED, uAirSpeed*3.6, JEP_PRIO_LOW);        // speed in km/h
+        jetiEx.SetSensorValue( ID_AIRSPEED, ourAirSpeed*3.6, JEP_PRIO_LOW);        // speed in km/h
       #endif
     }
     #endif
@@ -689,12 +728,12 @@ void loop()
       // see: http://www.how2soar.de/images/H2S_media/02_pdf/TE-Vario_im_Stroemungsfeld.pdf  
       #ifdef SUPPORT_TEC
      
-      if(TECmode == TEC_airSpeed){
-        dT = dTvario;
+      if(ourTECmode == TEC_airSpeed || (ourTECmode == TEC_RC && ourTEC_RemoteControl == TEC_airSpeed)){
+        ourDeltaT = dTvario;
       }
 
-      if (dT != 0 && dT < 3000) { // avoid divison by zero
-        long tvario = uSpeedMS  * 10194 * dV / dT;
+      if (ourDeltaT != 0 && ourDeltaT < 3000) { // avoid divison by zero
+        long tvario = ourAirSpeed  * 10194 * ourDeltaV / ourDeltaT;
         uVario += tvario;
       }
       #endif
@@ -863,16 +902,15 @@ void loop()
 
       // GPS TEC
       #ifdef SUPPORT_TEC
-      if(TECmode == TEC_GPS){
+      if(ourTECmode == TEC_GPS || (ourTECmode == TEC_RC && ourTEC_RemoteControl == TEC_GPS)){
         if (gps.speed.isUpdated()) {
-          uSpeedMS = gps.speed.kmph() / 3.6;
-          dV = uSpeedMS - lastGPSspeedMS;     // delta speed in m/s
-          lastGPSspeedMS = uSpeedMS;
+          ourAirSpeed = gps.speed.kmph() / 3.6;
+          ourDeltaV = ourAirSpeed - ourLastGpsSpeed;     // delta speed in m/s
+          ourLastGpsSpeed = ourAirSpeed;
           long uTimeSpeed = millis();
-          dT = uTimeSpeed - lastTimeSpeed; // dT in ms
-          lastTimeSpeed = uTimeSpeed;
+          ourDeltaT = uTimeSpeed - ourLastTimeSpeed; // ourDeltaT in ms
+          ourLastTimeSpeed = uTimeSpeed;
         }
-        
       }
       #endif
 
@@ -1015,11 +1053,16 @@ void loop()
 void setFastVariometerValues() {
   if (pressureSensor.type == MS5611_) {
     int variometer = ms5611.getVerticalSpeed();
+    #ifdef SUPPORT_TEC
+    if(ourTECmode == TEC_airSpeed || (ourTECmode == TEC_RC && ourTEC_RemoteControl == TEC_airSpeed)){
+      if (ourDeltaT != 0 && ourDeltaT < 3000) { // avoid divison by zero
+        long varioComensation = ourAirSpeed  * 10194 * ourDeltaV / ourDeltaT;
+        variometer += varioComensation;
+      }
+    }
+    #endif
+
     #ifdef UNIT_US
-      // EU to US conversions
-      // ft/s = m/s / 0.3048
-      // inHG = hPa * 0,029529983071445
-      // ft = m / 0.3048
       jetiEx.SetSensorValue( ID_VARIO, variometer /= 0.3048, JEP_PRIO_ULTRA_HIGH); // ft/s
     #else
       jetiEx.SetSensorValue( ID_VARIO, variometer, JEP_PRIO_ULTRA_HIGH);
