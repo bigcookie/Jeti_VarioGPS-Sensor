@@ -34,7 +34,12 @@ enum screenViews {
   enableExternTemp,
   #endif
   saveSettings,
-  defaultSettings
+  defaultSettings,
+  #ifdef SUPPORT_SYS_INTERNALS
+  systemInternals,
+  #endif
+  lastView
+
 };
 
 
@@ -67,7 +72,10 @@ const char menuText[][17] PROGMEM=
   {"Ext. Temp:"},
   #endif
   {"Save and restart"},
-  {"Load defaults"}
+  {"Load defaults"},
+  #ifdef SUPPORT_SYS_INTERNALS
+  {"System internals"},
+  #endif
 };
 
 const char aboutScreenText[17] PROGMEM= {VARIOGPS_VERSION};
@@ -100,12 +108,15 @@ const char detectedPressureSensorText[][9] PROGMEM=
   {" MPXV7002"}
 };*/
 
-const char setTECmodeText[][11] PROGMEM=
+#ifdef SUPPORT_TEC
+const char setTECmodeText[][12] PROGMEM=
 {
   {" Disabled"},
   {" Air speed"},
-  {" GPS"}
+  {" GPS"},
+  {" RemoteCtrl"},
 };
+#endif
 
 const char setMainDriveText[][16] PROGMEM=
 {
@@ -176,7 +187,7 @@ void HandleMenu()
   startHandleMenu:
 
   // Right
-  if ( c == keyRight && _nMenu < defaultSettings)
+  if ( c == keyRight && _nMenu < lastView-1)
   {
     _nMenu++;
     _bSetDisplay = true;
@@ -220,8 +231,8 @@ void HandleMenu()
       #endif
       #ifdef SUPPORT_TEC
       case setTECmode:
-        if(TECmode > TEC_disabled){
-          TECmode--;
+        if(ourTECmode > TEC_disabled){
+          ourTECmode--;
         }
         break;
       #endif
@@ -287,8 +298,13 @@ void HandleMenu()
       #endif
       #ifdef SUPPORT_TEC
       case setTECmode:
-        if(TECmode < TEC_GPS){
-          TECmode++;
+        #ifdef  SUPPORT_RXQ
+        if(ourTECmode < TEC_RC)
+        #else
+        if(ourTECmode < TEC_GPS)
+        #endif
+        {
+          ourTECmode++;
         }
         break;
       #endif
@@ -345,7 +361,7 @@ void HandleMenu()
         #endif
         
         #ifdef SUPPORT_TEC
-        EEPROM.write(P_TEC_MODE,TECmode);
+        EEPROM.write(P_TEC_MODE,ourTECmode);
         #endif
     
         resetCPU();
@@ -401,7 +417,7 @@ void HandleMenu()
     #endif
     #ifdef SUPPORT_TEC
     case setTECmode:
-      memcpy_P( _bufferLine2, &setTECmodeText[TECmode], 16 );
+      memcpy_P( _bufferLine2, &setTECmodeText[ourTECmode], 16 );
       break;
     #endif
     #ifdef SUPPORT_MAIN_DRIVE
@@ -424,6 +440,11 @@ void HandleMenu()
     #ifdef SUPPORT_EXT_TEMP
     case enableExternTemp:
       memcpy_P( _bufferLine2, &enableText[enableExtTemp], 16 );
+      break;
+    #endif
+    #ifdef SUPPORT_SYS_INTERNALS
+    case systemInternals:
+      sprintf( _bufferLine2, "debug: %d", getDebugInfo());
       break;
     #endif
   }

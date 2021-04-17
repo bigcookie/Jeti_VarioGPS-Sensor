@@ -634,7 +634,7 @@ void loop()
       // get air speed from MPXV7002/MPXV5004
       // based on code from johnlenfr, http://johnlenfr.1s.fr
       int airSpeedPressure = analogRead(AIRSPEED_PIN);
-      jetiEx.SetSensorValue( ID_DEBUG, airSpeedPressure, JEP_PRIO_HIGH);        // speed in km/h
+      // jetiEx.SetSensorValue( ID_DEBUG, airSpeedPressure, JEP_PRIO_HIGH);        // speed in km/h
       if (airSpeedPressure < refAirspeedPressure) airSpeedPressure = refAirspeedPressure;
 
       // differential pressure in Pa, 1 V/kPa, max 3920 Pa

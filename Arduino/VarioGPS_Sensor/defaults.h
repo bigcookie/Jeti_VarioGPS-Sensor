@@ -56,6 +56,9 @@ enum
   ID_SV_SIGNAL_GAP,
   ID_SV_SIGNAL_GAP_MAX,
   ID_SV_SIGNALS_PER_SECOND,
+  #ifdef SUPPORT_SYS_INTERNALS
+  ID_DEBUG,
+  #endif
   ID_LAST // not used, but has to be <=32 (see JetiExProtocol.h : MAX_SENSORS)
 };
 
@@ -114,12 +117,15 @@ JETISENSOR_CONST sensors[] PROGMEM =
   #ifdef SUPPORT_MPXV7002_MPXV5004
   { ID_AIRSPEED,    "Air speed",  "km/h",       JetiSensor::TYPE_14b, 0 },
   #endif
-#ifdef SUPPORT_RXQ
+  #ifdef SUPPORT_RXQ
   { ID_SV_SIG_LOSS_CNT, "SigLossCnt", "#",      JetiSensor::TYPE_14b, 0 },
   { ID_SV_SIGNAL_GAP,  "SigGap","ms",           JetiSensor::TYPE_22b, 0 },
   { ID_SV_SIGNAL_GAP_MAX,  "SigGapMax","ms",    JetiSensor::TYPE_22b, 0 },
   { ID_SV_SIGNALS_PER_SECOND, "#Sig/Sec","#",   JetiSensor::TYPE_14b, 0 },
-#endif
+  #endif
+  #ifdef SUPPORT_SYS_INTERNALS
+  { ID_DEBUG, "Debug","i",                      JetiSensor::TYPE_14b, 0 },
+  #endif
   { 0 }
 };
 #endif
@@ -171,6 +177,9 @@ JETISENSOR_CONST sensors[] PROGMEM =
   { ID_SV_SIGNAL_GAP,  "SigGap","ms",           JetiSensor::TYPE_22b, 0 },
   { ID_SV_SIGNAL_GAP_MAX,  "SigGapMax","ms",    JetiSensor::TYPE_22b, 0 },
   { ID_SV_SIGNALS_PER_SECOND, "#Sig/s","#",     JetiSensor::TYPE_14b, 0 },
+  #ifdef SUPPORT_SYS_INTERNALS
+  { ID_DEBUG, "Debug","i",                      JetiSensor::TYPE_14b, 0 },
+  #endif
   { 0 }
 };
 #endif
@@ -210,7 +219,8 @@ enum {
 enum {
   TEC_disabled,
   TEC_airSpeed,
-  TEC_GPS
+  TEC_GPS,
+  TEC_RC,
 };
 
 
