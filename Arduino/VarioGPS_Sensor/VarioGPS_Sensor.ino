@@ -6,12 +6,13 @@
   Vario, GPS, Strom/Spannung, Empfängerspannungen, Temperaturmessung
 
 */
-#define VARIOGPS_VERSION "Version V2.3.7.0"
+#define VARIOGPS_VERSION "Version V2.3.7.1"
 /*
 
   ******************************************************************
   Versionen:
-  V2.3.7.0 01.03.21 TEC changes, 
+  V2.3.7.1 18.04.21 RXQ fix impacts of serial communication interrupts 
+  V2.3.7.0 01.03.21 TEC changes 
   V2.3.6.3 03.04.21 bugfix do the ms5611.run() only if MS5611 is detected
   V2.3.6.2 01.03.21 bugfix JetiExSensor ExBuf overrun fixed (lib added) and usage of new prio-defines
   V2.3.6.1 23.02.21 bug with wrong height values for VarioMS5611 fixed
@@ -279,11 +280,12 @@ uint8_t getVoltageSensorTyp(){
 #define RXQ_SERVO_SIGNAL_LOSS_GAP 100
 #include <util/atomic.h> // this library includes the ATOMIC_BLOCK macro.
 
-volatile static unsigned long  ourServoSignalPulseWidth = 0;
-volatile static unsigned long  ourServoSignalRisingEdge = 0;
-volatile static int ourServoSignalLossCount = 0;
-volatile static int ourServoSignalGapMax = 0;
-volatile static int ourServoSignalGap = 0;
+volatile unsigned long  ourServoSignalPulseWidth = 0;
+volatile unsigned long  ourServoSignalRisingEdge = 0;
+volatile int ourServoSignalLossCount = 0;
+volatile int ourServoSignalGapMax = 0;
+volatile int ourServoSignalGap = 0;
+volatile boolean ourServoSignalIsValid = false;
 volatile unsigned long  ourPulsCnt = 0;
 static int ourServoSignalsPerSecond = 0;
 
@@ -291,13 +293,18 @@ static int ourServoSignalsPerSecond = 0;
 
 void sv_rising() {
   unsigned long now_us = micros();
-  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+  // ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
     // calculate the servo signal duration (time between two PWM signals) in ms
     // value depends on the TX signal frequency (100Hz, 50Hz, ...) and the loss of signals
     // typical values are 10ms (for 100Hz) or 20ms (for 50Hz)
-    ourServoSignalGap = (now_us - ourServoSignalRisingEdge)/1000;
+    int gap = (now_us - ourServoSignalRisingEdge)/1000;
+    if (gap >= 5 ) {
+      ourServoSignalGap = gap;
+      ourServoSignalIsValid = true;
+      ourPulsCnt++;
+    }
     ourServoSignalRisingEdge = now_us;
-  }
+  // }
 
 
   // time of signal puls starting at the raising edge in ms
@@ -305,9 +312,17 @@ void sv_rising() {
 }
 
 void sv_falling() {
-  unsigned long now_us = micros();
-  ourServoSignalPulseWidth = now_us - ourServoSignalRisingEdge;
-  ourPulsCnt++;
+  if (ourServoSignalIsValid) {
+    unsigned long now_us = micros();
+    ourServoSignalPulseWidth = now_us - ourServoSignalRisingEdge;
+    ourServoSignalIsValid = false;
+  }
+
+  // check the pulsewidth to avoid 
+  // if (750 <= ourServoSignalPulseWidth && ourServoSignalPulseWidth <= 2250) {
+  //   ourPulsCnt++;
+  // }
+  
   attachInterrupt(digitalPinToInterrupt(RXQ_SIGNAL_PIN), sv_rising, RISING);
 }
 
@@ -781,11 +796,11 @@ void loop()
 
     #ifdef SUPPORT_RXQ
       // ID_SV_SIG_LOSS_CNT : count of servo signal gap measures > 100ms
-      jetiEx.SetSensorValue( ID_SV_SIG_LOSS_CNT, ourServoSignalLossCount, JEP_PRIO_ULTRA_LOW);
+      jetiEx.SetSensorValue( ID_SV_SIG_LOSS_CNT, ourServoSignalLossCount, JEP_PRIO_LOW);
       // ID_SV_SIGNAL_GAP : time gap in ms between two servo pulses
       jetiEx.SetSensorValue( ID_SV_SIGNAL_GAP, ourServoSignalGap, JEP_PRIO_STANDARD);
       // ID_SV_SIGNAL_GAP_MAX : maximum time gap in ms between two servo pulses
-      jetiEx.SetSensorValue( ID_SV_SIGNAL_GAP_MAX, ourServoSignalGapMax, JEP_PRIO_ULTRA_LOW);
+      jetiEx.SetSensorValue( ID_SV_SIGNAL_GAP_MAX, ourServoSignalGapMax, JEP_PRIO_LOW);
       // number of servo signals / transmitted signals per second
       jetiEx.SetSensorValue( ID_SV_SIGNALS_PER_SECOND, ourServoSignalsPerSecond, JEP_PRIO_STANDARD);
 
