@@ -56,8 +56,10 @@ enum
   ID_SV_SIGNAL_GAP,
   ID_SV_SIGNAL_GAP_MAX,
   ID_SV_SIGNALS_PER_SECOND,
-  #ifdef SUPPORT_SYS_INTERNALS
+  #ifdef DEBUG_SENSOR
   ID_DEBUG,
+  ID_DEBUG2,
+  ID_DEBUG3,
   #endif
   ID_LAST // not used, but has to be <=32 (see JetiExProtocol.h : MAX_SENSORS)
 };
@@ -123,8 +125,10 @@ JETISENSOR_CONST sensors[] PROGMEM =
   { ID_SV_SIGNAL_GAP_MAX,  "SigGapMax","ms",    JetiSensor::TYPE_22b, 0 },
   { ID_SV_SIGNALS_PER_SECOND, "#Sig/Sec","#",   JetiSensor::TYPE_14b, 0 },
   #endif
-  #ifdef SUPPORT_SYS_INTERNALS
+  #ifdef DEBUG_SENSOR
   { ID_DEBUG, "Debug","i",                      JetiSensor::TYPE_14b, 0 },
+  { ID_DEBUG2, "Debug2","i",                      JetiSensor::TYPE_14b, 0 },
+  { ID_DEBUG3, "Debug3","i",                      JetiSensor::TYPE_14b, 0 },
   #endif
   { 0 }
 };
@@ -177,8 +181,10 @@ JETISENSOR_CONST sensors[] PROGMEM =
   { ID_SV_SIGNAL_GAP,  "SigGap","ms",           JetiSensor::TYPE_22b, 0 },
   { ID_SV_SIGNAL_GAP_MAX,  "SigGapMax","ms",    JetiSensor::TYPE_22b, 0 },
   { ID_SV_SIGNALS_PER_SECOND, "#Sig/s","#",     JetiSensor::TYPE_14b, 0 },
-  #ifdef SUPPORT_SYS_INTERNALS
+  #ifdef DEBUG_SENSOR
   { ID_DEBUG, "Debug","i",                      JetiSensor::TYPE_14b, 0 },
+  { ID_DEBUG2, "Debug2","i",                      JetiSensor::TYPE_14b, 0 },
+  { ID_DEBUG3, "Debug3","i",                      JetiSensor::TYPE_14b, 0 },
   #endif
   { 0 }
 };

@@ -6,11 +6,12 @@
   Vario, GPS, Strom/Spannung, Empfängerspannungen, Temperaturmessung
 
 */
-#define VARIOGPS_VERSION "Version V2.3.7.1"
+#define VARIOGPS_VERSION "Version V2.3.7.2"
 /*
 
   ******************************************************************
   Versionen:
+  V2.3.7.2 20.04.21 Support (Beta) of a ADS1115 for the airspeed pressure sensor ( #define SUPPORT_ADA_ADS1115)
   V2.3.7.1 18.04.21 RXQ fix impacts of serial communication interrupts 
   V2.3.7.0 01.03.21 TEC changes 
   V2.3.6.3 03.04.21 bugfix do the ms5611.run() only if MS5611 is detected
@@ -176,6 +177,12 @@
   LPS lps;
 #endif
 
+#ifdef SUPPORT_ADA_ADS1115
+#include <Adafruit_ADS1X15.h>
+Adafruit_ADS1115 ads;  /* Use this for the 16-bit version */
+boolean ads_connected=false;
+#endif
+
 struct {
   uint8_t mode = DEFAULT_GPS_MODE;
   bool distance3D = DEFAULT_GPS_3D_DISTANCE;
@@ -217,7 +224,7 @@ float lastVariofilter = 0;
 long lastAltitude = 0;
 
 // airspeed variables
-int refAirspeedPressure;
+int16_t ourReferenceDigiAirSpeed;
 float ourAirSpeed = 0;
 float ourLastAirSpeed = 0;
 
@@ -240,7 +247,6 @@ unsigned long tripDist;
 // Restart CPU
 
 void(* resetCPU) (void) = 0;
-int16_t getDebugInfo();
 
 #include "HandleMenu.h"
 
@@ -400,6 +406,25 @@ void setup()
     }
   #endif
 
+  #ifdef SUPPORT_ADA_ADS1115
+  Wire.beginTransmission(ADS1X15_ADDRESS); // check if the ADS1115 is connected
+  if (Wire.endTransmission() == 0) {
+    ads_connected = true;
+    // ads.setGain(GAIN_TWOTHIRDS);  // 2/3x gain +/- 6.144V  1 bit = 3mV      0.1875mV (default)
+    // ads.setGain(GAIN_ONE);        // 1x gain   +/- 4.096V  1 bit = 2mV      0.125mV
+    // ads.setGain(GAIN_TWO);        // 2x gain   +/- 2.048V  1 bit = 1mV      0.0625mV
+    // ads.setGain(GAIN_FOUR);       // 4x gain   +/- 1.024V  1 bit = 0.5mV    0.03125mV
+    // ads.setGain(GAIN_EIGHT);      // 8x gain   +/- 0.512V  1 bit = 0.25mV   0.015625mV
+    // ads.setGain(GAIN_SIXTEEN);    // 16x gain  +/- 0.256V  1 bit = 0.125mV  0.0078125mV
+
+    // Serial.println("Getting single-ended readings from AIN0..3");
+    ads.setGain(GAIN_FOUR);  // 2/3x gain +/- 6.144V  1 bit = 3mV      0.1875mV (default)
+    // Serial.println("ADC Range: +/- 6.144V (1 bit = 0.1875mV/ADS1115)");
+    ads.begin();
+  }
+  #endif
+
+
   #if defined(SUPPORT_BMx280) || defined(SUPPORT_MS5611) || defined(SUPPORT_LPS)
   switch (pressureSensor.type){
     case BMP280:
@@ -485,8 +510,15 @@ void setup()
   #ifdef SUPPORT_MPXV7002_MPXV5004
   // init airspeed sensor
   if(airSpeedSensor){
-    //delay(50);
-    refAirspeedPressure = analogRead(AIRSPEED_PIN);
+    #ifdef SUPPORT_ADA_ADS1115
+    Wire.beginTransmission(ADS1X15_ADDRESS); // check if the ADS1115 is connected
+    if (ads_connected) {
+      ourReferenceDigiAirSpeed = ads.readADC_Differential_0_1();
+    } else
+    #endif
+    { 
+      ourReferenceDigiAirSpeed = analogRead(AIRSPEED_PIN);
+    }
   }
   #endif
 
@@ -595,27 +627,6 @@ void setup()
 
 }
 
-#ifdef SUPPORT_SYS_INTERNALS
-extern unsigned int __bss_end;
-extern unsigned int __heap_start;
-extern void *__brkval;
-
-int16_t getFreeSram() {
-  uint8_t newVariable;
-  // heap is empty, use bss as start memory address
-  if ((uint16_t)__brkval == 0)
-    return (((uint16_t)&newVariable) - ((uint16_t)&__bss_end));
-  // use heap end as the start of the memory address
-  else
-    return (((uint16_t)&newVariable) - ((uint16_t)__brkval));
-}
-
-int16_t getDebugInfo() {
-  return getFreeSram();
-}
-
-#endif
-
 #if defined(SUPPORT_TEC) &&  defined(SUPPORT_RXQ) 
 void checkTECRemoteControl() {
   if (ourServoSignalPulseWidth > 1750 ) {
@@ -646,16 +657,39 @@ void loop()
     #ifdef SUPPORT_MPXV7002_MPXV5004
     if(airSpeedSensor){
       
+      float pressureVoltage;
       // get air speed from MPXV7002/MPXV5004
       // based on code from johnlenfr, http://johnlenfr.1s.fr
-      int airSpeedPressure = analogRead(AIRSPEED_PIN);
-      // jetiEx.SetSensorValue( ID_DEBUG, airSpeedPressure, JEP_PRIO_HIGH);        // speed in km/h
-      if (airSpeedPressure < refAirspeedPressure) airSpeedPressure = refAirspeedPressure;
+      #ifdef SUPPORT_ADA_ADS1115
+      if (ads_connected) {
+        int16_t digiVoltage = ads.readADC_Differential_0_1();
+        // no negative speeds
+        if (digiVoltage < ourReferenceDigiAirSpeed) {
+          digiVoltage = ourReferenceDigiAirSpeed;
+        }
+        pressureVoltage = ads.computeVolts(digiVoltage - ourReferenceDigiAirSpeed);
+      } else 
+      #endif
+      {
+        int16_t digiVoltage = analogRead(AIRSPEED_PIN);
+        // no negative speeds
+        if (digiVoltage < ourReferenceDigiAirSpeed) {
+          digiVoltage = ourReferenceDigiAirSpeed;
+        }
+        // Arduino ADS has a 10 bit resolution (1024) for the given V_REF voltage
+        pressureVoltage = (1.0f * V_REF) * ((digiVoltage - ourReferenceDigiAirSpeed) / 1024.0f);    
+      }
+      #ifdef DEBUG_SENSOR
+      jetiEx.SetSensorValue( ID_DEBUG, pressureVoltage*100, JEP_PRIO_STANDARD);        // speed in km/h
+      #endif
+
+       
 
       // differential pressure in Pa, 1 V/kPa, max 3920 Pa
-      float pitotpressure = 5000.0 * ((airSpeedPressure - refAirspeedPressure) / 1024.0f) + uPressure;    
-      float density = (uPressure * DRY_AIR_MOLAR_MASS) / ((uTemperature + 273.16) * UNIVERSAL_GAS_CONSTANT);
-      ourAirSpeed = sqrt ((2 * (pitotpressure - uPressure)) / density);
+      float dynamicPressure = pressureVoltage * 1000; // pressure in Pa
+
+      float density = (uPressure * DRY_AIR_MOLAR_MASS) / ((uTemperature + 273.16f) * UNIVERSAL_GAS_CONSTANT);
+      ourAirSpeed = sqrt ((2 * (dynamicPressure)) / density);
       
       // IIR Low Pass Filter
       ourAirSpeed = ourAirSpeed + AIRSPEED_SMOOTHING * (ourLastAirSpeed - ourAirSpeed);
@@ -665,6 +699,10 @@ void loop()
       if(ourTECmode == TEC_airSpeed || (ourTECmode == TEC_RC && ourTEC_RemoteControl == TEC_airSpeed)){
         ourAirSpeed = ourAirSpeed;
         ourDeltaV = ourAirSpeed - ourLastAirSpeed;     // delta speed in m/s
+      #ifdef DEBUG_SENSOR
+      jetiEx.SetSensorValue( ID_DEBUG2, ourDeltaV, JEP_PRIO_STANDARD);
+      jetiEx.SetSensorValue( ID_DEBUG3, ourDeltaT, JEP_PRIO_STANDARD);
+      #endif
       }
       #endif
       
